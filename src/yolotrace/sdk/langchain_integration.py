@@ -15,6 +15,7 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
 from langchain_core.tracers.context import register_configure_hook
 
+from yolotrace.sdk.llm_calls import mark_llm_call_finished, mark_llm_call_started
 from yolotrace.sdk.tracing import AttributeValue, Span, SpanKind, start_span
 
 
@@ -25,8 +26,12 @@ class YoloTraceCallbackHandler(BaseCallbackHandler):
     model calls become "llm" spans and tool calls become "tool" spans.
     """
 
+    # Run in the caller's task, so the LLM-call mark set on model start reaches the provider call.
+    run_inline = True
+
     def __init__(self) -> None:
         self._spans: dict[UUID, Span] = {}
+        self._llm_marks: dict[UUID, bool] = {}
 
     def on_chain_start(
         self,
@@ -84,13 +89,13 @@ class YoloTraceCallbackHandler(BaseCallbackHandler):
         span = self._spans.get(run_id)
         if span is not None:
             _record_usage(span, response)
-        self._finish(run_id)
+        self._finish_model(run_id)
 
     def on_llm_error(
         self, error: BaseException, *, run_id: UUID, **kwargs: object
     ) -> None:
         """Finish a model span that raised, recording the error."""
-        self._finish(run_id, error)
+        self._finish_model(run_id, error)
 
     def on_tool_start(
         self,
@@ -132,6 +137,8 @@ class YoloTraceCallbackHandler(BaseCallbackHandler):
             "llm",
             {"model": model if isinstance(model, str) else None},
         )
+        # The provider SDK call made by this model run is recorded by this span, not again.
+        self._llm_marks[run_id] = mark_llm_call_started()
 
     def _start(
         self,
@@ -152,6 +159,13 @@ class YoloTraceCallbackHandler(BaseCallbackHandler):
         span = self._spans.pop(run_id, None)
         if span is not None:
             span.end(error)
+
+    def _finish_model(self, run_id: UUID, error: BaseException | None = None) -> None:
+        """Finish a model span and restore the LLM-call mark that it set when it started."""
+        previous = self._llm_marks.pop(run_id, None)
+        if previous is not None:
+            mark_llm_call_finished(previous)
+        self._finish(run_id, error)
 
 
 def _text(value: object, default: str = "") -> str:

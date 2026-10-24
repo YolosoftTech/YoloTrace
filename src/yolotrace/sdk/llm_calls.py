@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import functools
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Protocol, Self, cast
 
@@ -18,6 +20,11 @@ _MARKER = "__yolotrace_instrumented__"
 
 TokenCounts = tuple[int | None, int | None]
 """Input and output token counts of one response or stream chunk; ``None`` when unreported."""
+
+_llm_call_recorded: ContextVar[bool] = ContextVar(
+    "yolotrace_llm_call_recorded", default=False
+)
+"""True while an LLM call is already recorded in this context, so nested calls are not recorded again."""
 
 
 class SyncStream(Protocol):
@@ -50,6 +57,38 @@ def is_wrapped(func: object) -> bool:
     return getattr(func, _MARKER, False) is True
 
 
+def is_llm_call_recorded() -> bool:
+    """Return True when an enclosing LLM span already records the call in progress."""
+    return _llm_call_recorded.get()
+
+
+def mark_llm_call_started() -> bool:
+    """Mark that an LLM span records the call in progress, and return the mark it replaces.
+
+    Framework integrations call this when their LLM span starts. A provider call made
+    inside that span then records nothing, so each model call gets exactly one span.
+    Pass the returned value to ``mark_llm_call_finished`` when the span ends.
+    """
+    previous = _llm_call_recorded.get()
+    _llm_call_recorded.set(True)
+    return previous
+
+
+def mark_llm_call_finished(previous: bool) -> None:
+    """Restore the mark that ``mark_llm_call_started`` replaced."""
+    _llm_call_recorded.set(previous)
+
+
+@contextmanager
+def _marked_llm_call() -> Iterator[None]:
+    """Mark the enclosed provider call as recorded, so calls nested inside it are not recorded."""
+    previous = mark_llm_call_started()
+    try:
+        yield
+    finally:
+        mark_llm_call_finished(previous)
+
+
 class SyncCreate(Protocol):
     """A sync provider ``create`` method as the wrapper sees it: arguments pass through unchanged."""
 
@@ -70,18 +109,22 @@ def wrap_create(original: SyncCreate, provider: Provider) -> SyncCreate:
 
     @functools.wraps(original)
     def create(*args: object, **kwargs: object) -> object:
+        if is_llm_call_recorded():
+            return original(*args, **kwargs)
         attributes = _request_attributes(provider, kwargs)
         if kwargs.get("stream"):
             span = start_span(provider.span_name, kind="llm", attributes=attributes)
             try:
                 # With stream=True the provider SDK returns its stream object.
-                stream = cast(SyncStream, original(*args, **kwargs))
+                with _marked_llm_call():
+                    stream = cast(SyncStream, original(*args, **kwargs))
             except BaseException as exc:
                 span.end(exc)
                 raise
             return TracedStream(stream, span, provider.read_tokens)
         with trace(provider.span_name, kind="llm", attributes=attributes) as span:
-            response = original(*args, **kwargs)
+            with _marked_llm_call():
+                response = original(*args, **kwargs)
             _record_tokens(span, provider.read_tokens(response))
             return response
 
@@ -97,18 +140,22 @@ def wrap_create_async(original: AsyncCreate, provider: Provider) -> AsyncCreate:
 
     @functools.wraps(original)
     async def create(*args: object, **kwargs: object) -> object:
+        if is_llm_call_recorded():
+            return await original(*args, **kwargs)
         attributes = _request_attributes(provider, kwargs)
         if kwargs.get("stream"):
             span = start_span(provider.span_name, kind="llm", attributes=attributes)
             try:
                 # With stream=True the provider SDK returns its stream object.
-                stream = cast(AsyncStream, await original(*args, **kwargs))
+                with _marked_llm_call():
+                    stream = cast(AsyncStream, await original(*args, **kwargs))
             except BaseException as exc:
                 span.end(exc)
                 raise
             return TracedAsyncStream(stream, span, provider.read_tokens)
         with trace(provider.span_name, kind="llm", attributes=attributes) as span:
-            response = await original(*args, **kwargs)
+            with _marked_llm_call():
+                response = await original(*args, **kwargs)
             _record_tokens(span, provider.read_tokens(response))
             return response
 
