@@ -10,6 +10,7 @@ from yolotrace.sdk import tracing
 def clear_spans() -> None:
     tracing._finished.clear()
     tracing._running.clear()
+    tracing.configure()
 
 
 @pytest.hookimpl(tryfirst=True)

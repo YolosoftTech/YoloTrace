@@ -9,6 +9,7 @@ STABLE_API = [
     "SpanContext",
     "SpanKind",
     "__version__",
+    "configure",
     "continue_trace",
     "current_span",
     "extract",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextvars
 import functools
 import inspect
+import random
 import re
 import secrets
 import time
@@ -36,8 +37,20 @@ AttributeValue = str | int | float | bool | None
 TRACEPARENT_KEY = "traceparent"
 """Carrier key under which ``inject`` writes and ``extract`` reads the trace context."""
 
-_TRACEPARENT_PATTERN = re.compile(r"00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}")
+_TRACEPARENT_PATTERN = re.compile(r"00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})")
+_SAMPLED_FLAG = 0x01
 
+
+@dataclass(frozen=True, slots=True)
+class _Settings:
+    """Recording settings that ``configure`` sets. The defaults record every trace in full."""
+
+    sample_rate: float = 1.0
+    max_attributes: int = 128
+    max_attribute_length: int = 4096
+
+
+_settings = _Settings()
 _current: ContextVar[Span | None] = ContextVar("yolotrace_current_span", default=None)
 _remote: ContextVar[SpanContext | None] = ContextVar(
     "yolotrace_remote_context", default=None
@@ -48,10 +61,15 @@ _running: dict[str, Span] = {}
 
 @dataclass(frozen=True)
 class SpanContext:
-    """The trace and span IDs that identify a point in a trace, possibly in another process."""
+    """The trace and span IDs that identify a point in a trace, possibly in another process.
+
+    ``sampled`` says whether the trace is recorded. Spans under an unsampled context are
+    not recorded either.
+    """
 
     trace_id: str
     span_id: str
+    sampled: bool = True
 
 
 @dataclass
@@ -72,6 +90,7 @@ class Span:
     error: str | None = None
     kind: SpanKind = "step"
     attributes: dict[str, AttributeValue] = field(default_factory=dict)
+    sampled: bool = True
 
     @property
     def duration(self) -> float | None:
@@ -81,8 +100,17 @@ class Span:
         return self.end_time - self.start_time
 
     def set_attribute(self, key: str, value: AttributeValue) -> None:
-        """Store ``value`` under ``key``, replacing any earlier value for that key."""
-        self.attributes[key] = value
+        """Store ``value`` under ``key``, replacing any earlier value for that key.
+
+        A new key is dropped once the span holds ``max_attributes`` keys, and a string
+        longer than ``max_attribute_length`` is cut short, so no error is raised.
+        """
+        if (
+            key not in self.attributes
+            and len(self.attributes) >= _settings.max_attributes
+        ):
+            return
+        self.attributes[key] = _limit(value)
 
     def end(self, exc: BaseException | None = None) -> None:
         """Finish a span started with ``start_span``, optionally marking it as failed."""
@@ -91,9 +119,51 @@ class Span:
         self.end_time = time.time()
         if exc is not None:
             self.status = "error"
-            self.error = f"{type(exc).__name__}: {exc}"
+            self.error = _truncate(f"{type(exc).__name__}: {exc}")
         _running.pop(self.span_id, None)
-        _finished.append(self)
+        if self.sampled:
+            _finished.append(self)
+
+
+def configure(
+    *,
+    sample_rate: float = 1.0,
+    max_attributes: int = 128,
+    max_attribute_length: int = 4096,
+) -> None:
+    """Set how much the SDK records. Each call replaces every setting; omitted ones reset to their defaults.
+
+    ``sample_rate`` is the fraction of new traces to record, from 0.0 to 1.0. The choice
+    is made once, where a trace starts, and every span of that trace follows it, including
+    spans in other processes that continued the trace through ``extract``. Spans that are
+    not sampled still run, so their code keeps working, but nothing is stored for them.
+
+    ``max_attributes`` caps the number of attributes a span keeps. ``max_attribute_length``
+    caps the length of string attributes and of error messages. Values over a limit are
+    dropped or cut short; they never raise an error.
+    """
+    if not 0.0 <= sample_rate <= 1.0:
+        raise ValueError(f"sample_rate must be between 0.0 and 1.0: {sample_rate!r}")
+    if max_attributes < 0 or max_attribute_length < 0:
+        raise ValueError("max_attributes and max_attribute_length cannot be negative")
+    global _settings
+    _settings = _Settings(
+        sample_rate=sample_rate,
+        max_attributes=max_attributes,
+        max_attribute_length=max_attribute_length,
+    )
+
+
+def _limit(value: AttributeValue) -> AttributeValue:
+    """Return ``value`` cut to the configured length when it is a string."""
+    if isinstance(value, str):
+        return _truncate(value)
+    return value
+
+
+def _truncate(text: str) -> str:
+    """Return ``text`` cut to the configured maximum attribute length."""
+    return text[: _settings.max_attribute_length]
 
 
 def current_span() -> Span | None:
@@ -110,7 +180,8 @@ def inject(carrier: MutableMapping[str, str]) -> None:
     """
     context = _active_context()
     if context is not None:
-        carrier[TRACEPARENT_KEY] = f"00-{context.trace_id}-{context.span_id}-01"
+        flags = "01" if context.sampled else "00"
+        carrier[TRACEPARENT_KEY] = f"00-{context.trace_id}-{context.span_id}-{flags}"
 
 
 def extract(carrier: Mapping[str, str]) -> SpanContext | None:
@@ -124,10 +195,11 @@ def extract(carrier: Mapping[str, str]) -> SpanContext | None:
     match = _TRACEPARENT_PATTERN.fullmatch(value) if value else None
     if match is None:
         return None
-    trace_id, span_id = match.groups()
+    trace_id, span_id, flags = match.groups()
     if set(trace_id) == {"0"} or set(span_id) == {"0"}:
         return None
-    return SpanContext(trace_id=trace_id, span_id=span_id)
+    sampled = bool(int(flags, 16) & _SAMPLED_FLAG)
+    return SpanContext(trace_id=trace_id, span_id=span_id, sampled=sampled)
 
 
 @contextmanager
@@ -149,7 +221,9 @@ def _active_context() -> SpanContext | None:
     """Return the context a new span or an injected carrier should attach to."""
     span = _current.get()
     if span is not None:
-        return SpanContext(trace_id=span.trace_id, span_id=span.span_id)
+        return SpanContext(
+            trace_id=span.trace_id, span_id=span.span_id, sampled=span.sampled
+        )
     return _remote.get()
 
 
@@ -204,6 +278,8 @@ def start_span(
 
 def _new_span(name: str, kind: SpanKind, attributes: dict[str, AttributeValue]) -> Span:
     context = _active_context()
+    # Sampling is load shedding, not a security decision, so a fast PRNG is enough.
+    sampled = context.sampled if context else random.random() < _settings.sample_rate  # nosec B311
     span = Span(
         name=name,
         trace_id=context.trace_id if context else secrets.token_hex(16),
@@ -211,9 +287,12 @@ def _new_span(name: str, kind: SpanKind, attributes: dict[str, AttributeValue]) 
         parent_id=context.span_id if context else None,
         start_time=time.time(),
         kind=kind,
-        attributes=attributes,
+        sampled=sampled,
     )
-    _running[span.span_id] = span
+    for key, value in attributes.items():
+        span.set_attribute(key, value)
+    if sampled:
+        _running[span.span_id] = span
     return span
 
 

@@ -1,6 +1,6 @@
 import asyncio
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -36,7 +36,7 @@ def test_running_spans_shows_an_open_block_in_start_order() -> None:
 
 def test_running_spans_keeps_unfinished_generator_until_closed() -> None:
     @trace("stream")
-    def gen() -> Iterator[int]:
+    def gen() -> Generator[int, None, None]:
         yield 1
         yield 2
 

@@ -110,6 +110,22 @@ with continue_trace(context), trace("job") as job:
 
 Spans recorded in the other process share the same `trace_id`. Each carrier key is `traceparent` in lower case, so normalize HTTP header names before calling `extract`.
 
+### Sampling and capture limits
+
+Use `configure` once at startup to record only part of the traffic or to cap how much each span keeps:
+
+```python
+from yolotrace import configure
+
+configure(sample_rate=0.1, max_attributes=64, max_attribute_length=2048)
+```
+
+- `sample_rate` is the fraction of new traces to record, from `0.0` to `1.0`. The choice is made where a trace starts, and every span of that trace follows it, including spans in other processes that continue it with `extract`. Unsampled spans still run, but they are not kept by `finished_spans` or `running_spans`.
+- `max_attributes` caps the attributes a span keeps. Extra keys are dropped.
+- `max_attribute_length` caps string attributes and error messages. Longer values are cut short.
+
+Each call replaces every setting, and omitted settings return to their defaults: record everything, 128 attributes, and 4096 characters.
+
 ## Architecture
 
 YoloTrace is a **pragmatic modular monolith**: one deployable Python application, organized into modules with explicit boundaries. Modules talk through their public interfaces rather than reaching into each other's internals, so they can be split out later if real load demands it.
