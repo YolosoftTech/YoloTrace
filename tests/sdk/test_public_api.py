@@ -6,10 +6,14 @@ from yolotrace import sdk
 
 STABLE_API = [
     "Span",
+    "SpanContext",
     "SpanKind",
     "__version__",
+    "continue_trace",
     "current_span",
+    "extract",
     "finished_spans",
+    "inject",
     "instrument_anthropic",
     "instrument_langchain",
     "instrument_openai",

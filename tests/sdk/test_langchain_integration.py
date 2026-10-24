@@ -62,6 +62,7 @@ def test_chain_run_is_recorded_as_run_span_with_nested_steps() -> None:
     assert spans["first"].parent_id == run.span_id
     assert spans["second"].kind == "step"
     assert spans["second"].parent_id == run.span_id
+    assert {span.trace_id for span in spans.values()} == {run.trace_id}
 
 
 def test_tool_call_is_recorded_as_tool_span() -> None:

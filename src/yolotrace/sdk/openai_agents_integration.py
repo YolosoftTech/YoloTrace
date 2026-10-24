@@ -46,6 +46,7 @@ class YoloTraceTracingProcessor(TracingProcessor):
         parent = self._spans.get(span.parent_id or span.trace_id)
         if parent is not None:
             child.parent_id = parent.span_id
+            child.trace_id = parent.trace_id
         self._spans[span.span_id] = child
 
     def on_span_end(self, span: AgentSpan[SpanData]) -> None:

@@ -5,9 +5,19 @@ from __future__ import annotations
 import contextvars
 import functools
 import inspect
+import re
+import secrets
 import time
-import uuid
-from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Mapping
+from collections.abc import (
+    AsyncGenerator,
+    Awaitable,
+    Callable,
+    Generator,
+    Iterator,
+    Mapping,
+    MutableMapping,
+)
+from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from types import TracebackType
@@ -23,16 +33,37 @@ _SPAN_KINDS: tuple[SpanKind, ...] = get_args(SpanKind)
 AttributeValue = str | int | float | bool | None
 """A span attribute is a primitive value, so it can be stored and exported as-is."""
 
+TRACEPARENT_KEY = "traceparent"
+"""Carrier key under which ``inject`` writes and ``extract`` reads the trace context."""
+
+_TRACEPARENT_PATTERN = re.compile(r"00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}")
+
 _current: ContextVar[Span | None] = ContextVar("yolotrace_current_span", default=None)
+_remote: ContextVar[SpanContext | None] = ContextVar(
+    "yolotrace_remote_context", default=None
+)
 _finished: list[Span] = []
 _running: dict[str, Span] = {}
 
 
+@dataclass(frozen=True)
+class SpanContext:
+    """The trace and span IDs that identify a point in a trace, possibly in another process."""
+
+    trace_id: str
+    span_id: str
+
+
 @dataclass
 class Span:
-    """One recorded unit of work, linked to its parent through ``parent_id``."""
+    """One recorded unit of work, linked to its parent through ``parent_id``.
+
+    ``trace_id`` is shared by every span of one trace, including spans recorded in
+    other processes that continued the trace through ``inject`` and ``extract``.
+    """
 
     name: str
+    trace_id: str
     span_id: str
     parent_id: str | None
     start_time: float
@@ -68,6 +99,58 @@ class Span:
 def current_span() -> Span | None:
     """Return the span whose block or function is running in this context, if any."""
     return _current.get()
+
+
+def inject(carrier: MutableMapping[str, str]) -> None:
+    """Write the active trace context into ``carrier`` so another process can continue it.
+
+    Call it where work leaves this process, such as before an HTTP request or when a
+    job is queued, and pass the carrier along with the work. Nothing is written when
+    no span or remote context is active.
+    """
+    context = _active_context()
+    if context is not None:
+        carrier[TRACEPARENT_KEY] = f"00-{context.trace_id}-{context.span_id}-01"
+
+
+def extract(carrier: Mapping[str, str]) -> SpanContext | None:
+    """Read the trace context that ``inject`` wrote into ``carrier``.
+
+    Returns ``None`` when the value is missing or malformed. Carriers often come from
+    untrusted callers, so a bad value starts a new trace instead of raising an error.
+    The key is ``traceparent`` in lower case, so normalize HTTP header names first.
+    """
+    value = carrier.get(TRACEPARENT_KEY)
+    match = _TRACEPARENT_PATTERN.fullmatch(value) if value else None
+    if match is None:
+        return None
+    trace_id, span_id = match.groups()
+    if set(trace_id) == {"0"} or set(span_id) == {"0"}:
+        return None
+    return SpanContext(trace_id=trace_id, span_id=span_id)
+
+
+@contextmanager
+def continue_trace(context: SpanContext | None) -> Iterator[None]:
+    """Make root spans started in this block children of ``context``, a span from elsewhere.
+
+    The new spans share ``context.trace_id`` and link to ``context.span_id``, even though
+    that span is recorded in another process. Use it with the result of ``extract``.
+    A local span that is already running still takes precedence over ``context``.
+    """
+    token = _remote.set(context)
+    try:
+        yield
+    finally:
+        _remote.reset(token)
+
+
+def _active_context() -> SpanContext | None:
+    """Return the context a new span or an injected carrier should attach to."""
+    span = _current.get()
+    if span is not None:
+        return SpanContext(trace_id=span.trace_id, span_id=span.span_id)
+    return _remote.get()
 
 
 def finished_spans() -> list[Span]:
@@ -120,11 +203,12 @@ def start_span(
 
 
 def _new_span(name: str, kind: SpanKind, attributes: dict[str, AttributeValue]) -> Span:
-    parent = _current.get()
+    context = _active_context()
     span = Span(
         name=name,
-        span_id=uuid.uuid4().hex,
-        parent_id=parent.span_id if parent else None,
+        trace_id=context.trace_id if context else secrets.token_hex(16),
+        span_id=secrets.token_hex(8),
+        parent_id=context.span_id if context else None,
         start_time=time.time(),
         kind=kind,
         attributes=attributes,

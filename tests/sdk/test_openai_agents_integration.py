@@ -112,6 +112,7 @@ def test_agent_run_is_recorded_as_run_with_agent_model_and_tool_spans() -> None:
     assert len(llm_spans) == 2
     assert all(agent_span.span_id in _ancestor_ids(s, spans) for s in llm_spans)
     assert all(s.status == "ok" for s in spans)
+    assert {s.trace_id for s in spans} == {run.trace_id}
 
 
 def test_model_call_records_token_usage() -> None:

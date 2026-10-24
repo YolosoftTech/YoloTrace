@@ -145,6 +145,7 @@ class YoloTraceCallbackHandler(BaseCallbackHandler):
         parent = None if parent_run_id is None else self._spans.get(parent_run_id)
         if parent is not None:
             span.parent_id = parent.span_id
+            span.trace_id = parent.trace_id
         self._spans[run_id] = span
 
     def _finish(self, run_id: UUID, error: BaseException | None = None) -> None:

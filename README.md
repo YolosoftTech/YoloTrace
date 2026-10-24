@@ -89,6 +89,27 @@ instrument_openai_agents()  # requires openai-agents; records every Agents SDK t
 - Agents SDK traces become `run` spans. Agent and handoff spans become `step` spans, model calls become `llm` spans, and function tool calls become `tool` spans.
 - **Privacy:** the Agents SDK keeps its own exporter. When `OPENAI_API_KEY` is set, it sends its traces to OpenAI. To keep traces local, leave `OPENAI_API_KEY` unset in the process that runs agents; the SDK then skips the export and YoloTrace still records the spans. Setting `OPENAI_AGENTS_DISABLE_TRACING=1` stops the export too, but it also stops YoloTrace from receiving any spans.
 
+### Tracing across services and processes
+
+To continue a trace in another service or process, write the current trace context into a carrier, such as HTTP headers or a job payload, and read it on the other side:
+
+```python
+from yolotrace import continue_trace, extract, inject, trace
+
+# Caller process
+with trace("request") as request:
+    headers: dict[str, str] = {}
+    inject(headers)  # adds a "traceparent" entry, in the W3C Trace Context format
+    send_to_worker(headers)
+
+# Worker process
+context = extract(headers)  # None if the entry is missing or malformed
+with continue_trace(context), trace("job") as job:
+    ...  # job.trace_id == request.trace_id and job.parent_id == request.span_id
+```
+
+Spans recorded in the other process share the same `trace_id`. Each carrier key is `traceparent` in lower case, so normalize HTTP header names before calling `extract`.
+
 ## Architecture
 
 YoloTrace is a **pragmatic modular monolith**: one deployable Python application, organized into modules with explicit boundaries. Modules talk through their public interfaces rather than reaching into each other's internals, so they can be split out later if real load demands it.
