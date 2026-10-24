@@ -4,7 +4,7 @@ Open-source, self-hosted observability and debugging for AI agents.
 
 YoloTrace records what your AI agents did, why they did it, where they failed, and how much they cost, while keeping your trace data on infrastructure you control.
 
-> **Status:** early development. Only the Python SDK's tracing API works today. It is not ready for production use.
+> **Status:** early development. The Python and JavaScript/TypeScript SDKs' tracing APIs work today. It is not ready for production use.
 
 ## What works today
 
@@ -125,6 +125,30 @@ configure(sample_rate=0.1, max_attributes=64, max_attribute_length=2048)
 - `max_attribute_length` caps string attributes and error messages. Longer values are cut short.
 
 Each call replaces every setting, and omitted settings return to their defaults: record everything, 128 attributes, and 4096 characters.
+
+### JavaScript/TypeScript SDK
+
+The JavaScript/TypeScript SDK lives in `sdk/javascript` and needs Node.js 20 or later. It has no runtime dependencies. It offers the same tracing API as the Python SDK, with functions instead of decorators:
+
+```typescript
+import { configure, finishedSpans, inject, startSpan, trace } from "yolotrace";
+
+configure({ sampleRate: 0.1, maxAttributes: 64, maxAttributeLength: 2048 });
+
+await trace("answer", async () => {
+  await trace("lookup", () => {}, { kind: "tool" });
+}, { kind: "run" });
+
+const job = startSpan("upload", { kind: "tool", attributes: { bytes: 1024 } });
+job.end(); // or job.end(error) to record a failure
+
+const headers: Record<string, string> = {};
+trace("request", () => inject(headers));
+```
+
+- `trace(name, fn, options)` runs `fn` as a span. It works with sync functions and with promises, and the span stays current across `await`s. A thrown error is recorded and rethrown unchanged.
+- `continueTrace(extract(headers), fn)` continues a trace from another process, the same as `continue_trace` and `extract` in Python.
+- Streams and async generators are not traced yet. Automatic instrumentation of LLM clients is not available in this SDK.
 
 ## Architecture
 
