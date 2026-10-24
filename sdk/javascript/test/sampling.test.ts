@@ -1,7 +1,15 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { configure, currentSpan, finishedSpans, runningSpans, startSpan, trace, type Span } from "../src/index.js";
+import {
+  configure,
+  currentSpan,
+  finishedSpans,
+  runningSpans,
+  startSpan,
+  trace,
+  type Span,
+} from "../src/index.js";
 
 afterEach(() => {
   configure();
@@ -28,8 +36,8 @@ describe("configure sampling", () => {
     });
 
     assert.equal(span?.sampled, false);
-    assert.equal(finishedSpans().includes(span!), false);
-    assert.equal(runningSpans().includes(span!), false);
+    assert.equal(finishedSpans().includes(span), false);
+    assert.equal(runningSpans().includes(span), false);
   });
 
   it("keeps unsampled work running so the code still works", () => {
@@ -58,7 +66,7 @@ describe("configure sampling", () => {
     child?.end();
 
     assert.equal(child?.sampled, false);
-    assert.equal(finishedSpans().includes(child!), false);
+    assert.equal(finishedSpans().includes(child), false);
   });
 
   it("resets every setting when configure is called without options", () => {

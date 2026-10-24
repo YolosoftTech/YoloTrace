@@ -99,7 +99,10 @@ describe("continueTrace", () => {
   });
 
   it("returns the value of the function", () => {
-    assert.equal(continueTrace(undefined, () => "result"), "result");
+    assert.equal(
+      continueTrace(undefined, () => "result"),
+      "result",
+    );
   });
 
   it("starts a new trace when the context is undefined", () => {
@@ -130,7 +133,11 @@ describe("continueTrace", () => {
 
   it("keeps the remote sampling decision for every span under it", () => {
     configure({ sampleRate: 1 });
-    const unsampled: SpanContext = { traceId: "a".repeat(32), spanId: "b".repeat(16), sampled: false };
+    const unsampled: SpanContext = {
+      traceId: "a".repeat(32),
+      spanId: "b".repeat(16),
+      sampled: false,
+    };
     let job: Span | undefined;
     continueTrace(unsampled, () => {
       job = startSpan("job");

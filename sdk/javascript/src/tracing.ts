@@ -306,7 +306,9 @@ export function inject(carrier: Record<string, string>): void {
  * @param carrier Map that may hold a `traceparent` entry.
  * @returns The context to pass to `continueTrace`, or `undefined` when none is valid.
  */
-export function extract(carrier: Readonly<Record<string, string | undefined>>): SpanContext | undefined {
+export function extract(
+  carrier: Readonly<Record<string, string | undefined>>,
+): SpanContext | undefined {
   const value = carrier[TRACEPARENT_KEY];
   const match = value === undefined ? null : TRACEPARENT_PATTERN.exec(value);
   if (match === null) {
