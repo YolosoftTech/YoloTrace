@@ -18,6 +18,7 @@ from agents.tracing.span_data import (
     SpanData,
 )
 
+from yolotrace.sdk.llm_calls import mark_llm_call_finished, mark_llm_call_started
 from yolotrace.sdk.tracing import AttributeValue, Span, SpanKind, start_span
 
 
@@ -30,6 +31,7 @@ class YoloTraceTracingProcessor(TracingProcessor):
 
     def __init__(self) -> None:
         self._spans: dict[str, Span] = {}
+        self._llm_marks: dict[str, bool] = {}
 
     def on_trace_start(self, trace: Trace) -> None:
         """Start a "run" span for an Agents SDK trace."""
@@ -48,6 +50,9 @@ class YoloTraceTracingProcessor(TracingProcessor):
             child.parent_id = parent.span_id
             child.trace_id = parent.trace_id
         self._spans[span.span_id] = child
+        if kind == "llm":
+            # The provider SDK call made by this model span is recorded by this span, not again.
+            self._llm_marks[span.span_id] = mark_llm_call_started()
 
     def on_span_end(self, span: AgentSpan[SpanData]) -> None:
         """Finish a child span, recording token usage and any error the Agents SDK reports."""
@@ -61,6 +66,9 @@ class YoloTraceTracingProcessor(TracingProcessor):
         if span.error is not None:
             child.status = "error"
             child.error = span.error["message"]
+        previous = self._llm_marks.pop(span.span_id, None)
+        if previous is not None:
+            mark_llm_call_finished(previous)
         self._finish(span.span_id)
 
     def shutdown(self) -> None:
