@@ -8,9 +8,13 @@ from yolotrace.sdk.instrumentation import (
 )
 from yolotrace.sdk.tracing import (
     Span,
+    SpanContext,
     SpanKind,
+    continue_trace,
     current_span,
+    extract,
     finished_spans,
+    inject,
     propagate_context,
     running_spans,
     start_span,
@@ -21,10 +25,14 @@ __version__ = "0.1.0"
 
 __all__ = [
     "Span",
+    "SpanContext",
     "SpanKind",
     "__version__",
+    "continue_trace",
     "current_span",
+    "extract",
     "finished_spans",
+    "inject",
     "instrument_anthropic",
     "instrument_langchain",
     "instrument_openai",
