@@ -89,6 +89,18 @@ instrument_openai_agents()  # requires openai-agents; records every Agents SDK t
 - Agents SDK traces become `run` spans. Agent and handoff spans become `step` spans, model calls become `llm` spans, and function tool calls become `tool` spans.
 - **Privacy:** the Agents SDK keeps its own exporter. When `OPENAI_API_KEY` is set, it sends its traces to OpenAI. To keep traces local, leave `OPENAI_API_KEY` unset in the process that runs agents; the SDK then skips the export and YoloTrace still records the spans. Setting `OPENAI_AGENTS_DISABLE_TRACING=1` stops the export too, but it also stops YoloTrace from receiving any spans.
 
+### Zero-code instrumentation
+
+To trace an existing script without editing it, run it through YoloTrace:
+
+```bash
+python -m yolotrace run app.py --model gpt-4o
+```
+
+The `run` command instruments every supported LLM library that is installed (`openai`, `anthropic`, `langchain-core` and `openai-agents`), runs `app.py` with its arguments, and then prints a summary to stderr, such as `YoloTrace: recorded 12 spans, 4 LLM calls, 1 failed`. The summary is printed even when the script raises. A library that is not installed is skipped. If one integration fails, YoloTrace prints a warning and the script still runs.
+
+Spans are kept in memory only, so the summary is the only output of `run` today. Exporting traces to files or to a server is not available yet. Use `python -m yolotrace run` only with a script, not with `-m module`.
+
 ### Tracing across services and processes
 
 To continue a trace in another service or process, write the current trace context into a carrier, such as HTTP headers or a job payload, and read it on the other side:
