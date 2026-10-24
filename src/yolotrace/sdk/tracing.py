@@ -41,6 +41,16 @@ class Span:
     def set_attribute(self, key: str, value: Any) -> None:
         self.attributes[key] = value
 
+    def end(self, exc: BaseException | None = None) -> None:
+        """Finish a span started with ``start_span``, optionally marking it as failed."""
+        if self.end_time is not None:
+            raise RuntimeError(f"span {self.name!r} has already ended")
+        self.end_time = time.time()
+        if exc is not None:
+            self.status = "error"
+            self.error = f"{type(exc).__name__}: {exc}"
+        _finished.append(self)
+
 
 def current_span() -> Span | None:
     return _current.get()
@@ -48,6 +58,36 @@ def current_span() -> Span | None:
 
 def finished_spans() -> list[Span]:
     return list(_finished)
+
+
+def start_span(
+    name: str,
+    *,
+    kind: SpanKind = "step",
+    attributes: dict[str, Any] | None = None,
+) -> Span:
+    """Start a span that is ended explicitly with ``span.end()``.
+
+    Use it when the work does not fit one ``with`` block or function, for example
+    when a span starts in one callback and ends in another. The span is parented to
+    the current span but does not become the current span, so nested ``trace``
+    blocks do not link to it.
+    """
+    if kind not in _SPAN_KINDS:
+        raise ValueError(f"unknown span kind: {kind!r}")
+    return _new_span(name, kind, dict(attributes or {}))
+
+
+def _new_span(name: str, kind: SpanKind, attributes: dict[str, Any]) -> Span:
+    parent = _current.get()
+    return Span(
+        name=name,
+        span_id=uuid.uuid4().hex,
+        parent_id=parent.span_id if parent else None,
+        start_time=time.time(),
+        kind=kind,
+        attributes=attributes,
+    )
 
 
 class trace:
@@ -87,15 +127,7 @@ class trace:
             raise ValueError(
                 "a span name is required when using trace as a context manager"
             )
-        parent = _current.get()
-        self._span = Span(
-            name=self._name,
-            span_id=uuid.uuid4().hex,
-            parent_id=parent.span_id if parent else None,
-            start_time=time.time(),
-            kind=self._kind,
-            attributes=dict(self._attributes),
-        )
+        self._span = _new_span(self._name, self._kind, dict(self._attributes))
         self._token = _current.set(self._span)
         return self._span
 
@@ -107,10 +139,6 @@ class trace:
     ) -> bool:
         span = self._span
         assert span is not None
-        span.end_time = time.time()
-        if exc is not None:
-            span.status = "error"
-            span.error = f"{type(exc).__name__}: {exc}"
         _current.reset(self._token)
-        _finished.append(span)
+        span.end(exc)
         return False

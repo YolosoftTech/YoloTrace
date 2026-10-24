@@ -29,6 +29,16 @@ for span in finished_spans():
     print(span.name, span.status, span.duration)
 ```
 
+For work that does not fit one block or function, start a span explicitly and end it later:
+
+```python
+from yolotrace import start_span
+
+job = start_span("upload", kind="tool", attributes={"bytes": 1024})
+# ... later, possibly in another function ...
+job.end()  # or job.end(exc) to record a failure
+```
+
 - Nested spans link to their parent through `parent_id`.
 - Exceptions are recorded on the span (`status == "error"`, `error == "Type: message"`) and re-raised unchanged.
 - Finished spans are kept in process memory. Storage and the ingestion API are not built yet.

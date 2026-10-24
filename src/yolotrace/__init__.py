@@ -6,7 +6,16 @@ from yolotrace.sdk import (
     __version__,
     current_span,
     finished_spans,
+    start_span,
     trace,
 )
 
-__all__ = ["Span", "SpanKind", "__version__", "current_span", "finished_spans", "trace"]
+__all__ = [
+    "Span",
+    "SpanKind",
+    "__version__",
+    "current_span",
+    "finished_spans",
+    "start_span",
+    "trace",
+]

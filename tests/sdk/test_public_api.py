@@ -10,6 +10,7 @@ STABLE_API = [
     "__version__",
     "current_span",
     "finished_spans",
+    "start_span",
     "trace",
 ]
 
