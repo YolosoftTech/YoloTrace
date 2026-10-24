@@ -4,10 +4,12 @@ from pathlib import Path
 import yolotrace
 from yolotrace import sdk
 
+STABLE_API = ["Span", "__version__", "finished_spans", "trace"]
+
 
 def test_public_api_is_exactly_the_stable_surface() -> None:
-    assert yolotrace.__all__ == ["__version__"]
-    assert sdk.__all__ == ["__version__"]
+    assert sorted(yolotrace.__all__) == STABLE_API
+    assert sorted(sdk.__all__) == STABLE_API
 
 
 def test_version_matches_project_metadata() -> None:
