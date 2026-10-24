@@ -4,7 +4,14 @@ from pathlib import Path
 import yolotrace
 from yolotrace import sdk
 
-STABLE_API = ["Span", "__version__", "finished_spans", "trace"]
+STABLE_API = [
+    "Span",
+    "SpanKind",
+    "__version__",
+    "current_span",
+    "finished_spans",
+    "trace",
+]
 
 
 def test_public_api_is_exactly_the_stable_surface() -> None:

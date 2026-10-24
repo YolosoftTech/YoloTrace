@@ -7,11 +7,14 @@ import time
 import uuid
 from collections.abc import Callable
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar, get_args
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+SpanKind = Literal["run", "step", "llm", "tool"]
+_SPAN_KINDS = get_args(SpanKind)
 
 _current: ContextVar[Span | None] = ContextVar("yolotrace_current_span", default=None)
 _finished: list[Span] = []
@@ -26,6 +29,8 @@ class Span:
     end_time: float | None = None
     status: str = "ok"
     error: str | None = None
+    kind: SpanKind = "step"
+    attributes: dict[str, Any] = field(default_factory=dict)
 
     @property
     def duration(self) -> float | None:
@@ -33,16 +38,37 @@ class Span:
             return None
         return self.end_time - self.start_time
 
+    def set_attribute(self, key: str, value: Any) -> None:
+        self.attributes[key] = value
+
+
+def current_span() -> Span | None:
+    return _current.get()
+
 
 def finished_spans() -> list[Span]:
     return list(_finished)
 
 
 class trace:
-    """Record a span around a function call (``@trace()``) or a block (``with trace("name")``)."""
+    """Record a span around a function call (``@trace()``) or a block (``with trace("name")``).
 
-    def __init__(self, name: str | None = None) -> None:
+    ``kind`` is one of "run", "step", "llm" or "tool". ``attributes`` holds metadata
+    known before the call; use ``current_span().set_attribute`` for values known after.
+    """
+
+    def __init__(
+        self,
+        name: str | None = None,
+        *,
+        kind: SpanKind = "step",
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
+        if kind not in _SPAN_KINDS:
+            raise ValueError(f"unknown span kind: {kind!r}")
         self._name = name
+        self._kind = kind
+        self._attributes = dict(attributes or {})
         self._span: Span | None = None
         self._token: Any = None
 
@@ -51,7 +77,7 @@ class trace:
 
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            with trace(name):
+            with trace(name, kind=self._kind, attributes=self._attributes):
                 return func(*args, **kwargs)
 
         return wrapper  # type: ignore[return-value]
@@ -67,6 +93,8 @@ class trace:
             span_id=uuid.uuid4().hex,
             parent_id=parent.span_id if parent else None,
             start_time=time.time(),
+            kind=self._kind,
+            attributes=dict(self._attributes),
         )
         self._token = _current.set(self._span)
         return self._span
