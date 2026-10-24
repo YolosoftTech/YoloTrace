@@ -21,3 +21,6 @@ build/
 # Product backlog and local notes (kept local)
 product.md
 useful.md
+
+# Manual testing playground (kept local)
+playground/
