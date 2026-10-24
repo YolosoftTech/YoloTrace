@@ -54,6 +54,19 @@ Calling them more than once is safe. Streaming (`stream=True`) and async calls a
 - Exceptions are recorded on the span (`status == "error"`, `error == "Type: message"`) and re-raised unchanged.
 - Finished spans are kept in process memory. Storage and the ingestion API are not built yet.
 
+To record agent framework runs, opt in once at startup. Each package is optional and must be installed:
+
+```python
+from yolotrace import instrument_langchain, instrument_openai_agents
+
+instrument_langchain()  # requires langchain-core; records every LangChain run in the process
+instrument_openai_agents()  # requires openai-agents; records every Agents SDK trace in the process
+```
+
+- LangChain chains become `run` (top level) and `step` spans, model calls become `llm` spans, and tool calls become `tool` spans.
+- Agents SDK traces become `run` spans. Agent and handoff spans become `step` spans, model calls become `llm` spans, and function tool calls become `tool` spans.
+- **Privacy:** the Agents SDK keeps its own exporter. When `OPENAI_API_KEY` is set, it sends its traces to OpenAI. To keep traces local, leave `OPENAI_API_KEY` unset in the process that runs agents; the SDK then skips the export and YoloTrace still records the spans. Setting `OPENAI_AGENTS_DISABLE_TRACING=1` stops the export too, but it also stops YoloTrace from receiving any spans.
+
 ## Architecture
 
 YoloTrace is a **pragmatic modular monolith**: one deployable Python application, organized into modules with explicit boundaries. Modules talk through their public interfaces rather than reaching into each other's internals, so they can be split out later if real load demands it.

@@ -7,7 +7,9 @@ from yolotrace.sdk import (
     current_span,
     finished_spans,
     instrument_anthropic,
+    instrument_langchain,
     instrument_openai,
+    instrument_openai_agents,
     start_span,
     trace,
 )
@@ -19,7 +21,9 @@ __all__ = [
     "current_span",
     "finished_spans",
     "instrument_anthropic",
+    "instrument_langchain",
     "instrument_openai",
+    "instrument_openai_agents",
     "start_span",
     "trace",
 ]

@@ -14,7 +14,9 @@ build-backend = "uv_build"
 dev = [
     "anthropic>=2.3.0",
     "httpx>=0.28.1",
+    "langchain-core>=1.7.0",
     "openai>=3.37.0",
+    "openai-agents>=0.24.0",
     "pytest>=9.1.1",
     "ruff>=0.17.2",
 ]

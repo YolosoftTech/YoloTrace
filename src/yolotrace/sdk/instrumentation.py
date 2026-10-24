@@ -45,6 +45,30 @@ def instrument_anthropic() -> None:
     )
 
 
+def instrument_langchain() -> None:
+    """Record every LangChain run in the process as spans: chains, chat/LLM calls and tools."""
+    try:
+        from yolotrace.sdk.langchain_integration import install
+    except ImportError as exc:
+        raise ImportError(
+            "instrument_langchain() requires the 'langchain-core' package"
+        ) from exc
+
+    install()
+
+
+def instrument_openai_agents() -> None:
+    """Record every OpenAI Agents SDK trace in the process: agents, model calls, tools and handoffs."""
+    try:
+        from yolotrace.sdk.openai_agents_integration import install
+    except ImportError as exc:
+        raise ImportError(
+            "instrument_openai_agents() requires the 'openai-agents' package"
+        ) from exc
+
+    install()
+
+
 def _wrap(
     owner: type[Any],
     span_name: str,

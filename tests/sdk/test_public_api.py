@@ -11,7 +11,9 @@ STABLE_API = [
     "current_span",
     "finished_spans",
     "instrument_anthropic",
+    "instrument_langchain",
     "instrument_openai",
+    "instrument_openai_agents",
     "start_span",
     "trace",
 ]
