@@ -1,12 +1,15 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { Span, configure, currentSpan, finishedSpans, runningSpans, startSpan, trace } from "../src/index.js";
-
-/** Spans recorded for one trace, so tests do not see spans from other tests. */
-function spansOf(traceId: string): Span[] {
-  return finishedSpans().filter((span) => span.traceId === traceId);
-}
+import {
+  Span,
+  configure,
+  currentSpan,
+  finishedSpans,
+  runningSpans,
+  startSpan,
+  trace,
+} from "../src/index.js";
 
 afterEach(() => {
   configure();
@@ -29,18 +32,29 @@ describe("trace", () => {
   });
 
   it("returns the value of the function", () => {
-    assert.equal(trace("sum", () => 2 + 3), 5);
+    assert.equal(
+      trace("sum", () => 2 + 3),
+      5,
+    );
   });
 
   it("links nested spans to their parent and shares the trace ID", () => {
     let runSpan: Span | undefined;
     let llmSpan: Span | undefined;
-    trace("run", () => {
-      runSpan = currentSpan();
-      trace("llm", () => {
-        llmSpan = currentSpan();
-      }, { kind: "llm" });
-    }, { kind: "run" });
+    trace(
+      "run",
+      () => {
+        runSpan = currentSpan();
+        trace(
+          "llm",
+          () => {
+            llmSpan = currentSpan();
+          },
+          { kind: "llm" },
+        );
+      },
+      { kind: "run" },
+    );
 
     assert.equal(llmSpan?.parentId, runSpan?.spanId);
     assert.equal(llmSpan?.traceId, runSpan?.traceId);
@@ -81,6 +95,8 @@ describe("trace", () => {
     assert.throws(() =>
       trace("fail", () => {
         recorded = currentSpan();
+        // Deliberately throws a non-Error value, which the SDK must still record.
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw "plain string";
       }),
     );
@@ -94,6 +110,8 @@ describe("trace", () => {
     assert.throws(() =>
       trace("fail", () => {
         recorded = currentSpan();
+        // Deliberately throws undefined, which the SDK must still record as a failure.
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw undefined;
       }),
     );
@@ -233,11 +251,14 @@ describe("Span attributes", () => {
     span.setAttribute("b", true);
     span.setAttribute("c", null);
 
-    assert.deepEqual([...span.attributes.entries()], [
-      ["a", 2],
-      ["b", true],
-      ["c", null],
-    ]);
+    assert.deepEqual(
+      [...span.attributes.entries()],
+      [
+        ["a", 2],
+        ["b", true],
+        ["c", null],
+      ],
+    );
     span.end();
   });
 });

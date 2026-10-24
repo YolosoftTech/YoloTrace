@@ -4,7 +4,7 @@ Open-source, self-hosted observability and debugging for AI agents.
 
 YoloTrace records what your AI agents did, why they did it, where they failed, and how much they cost, while keeping your trace data on infrastructure you control.
 
-> **Status:** early development. The Python and JavaScript/TypeScript SDKs' tracing APIs work today. It is not ready for production use.
+> **Status:** early development. The Python, JavaScript/TypeScript and Go SDKs' tracing APIs work today. It is not ready for production use.
 
 ## What works today
 
@@ -150,13 +150,43 @@ trace("request", () => inject(headers));
 - `continueTrace(extract(headers), fn)` continues a trace from another process, the same as `continue_trace` and `extract` in Python.
 - Streams and async generators are not traced yet. Automatic instrumentation of LLM clients is not available in this SDK.
 
+### Go SDK
+
+The Go SDK lives in `sdk/go`, is a separate Go module with no dependencies, and needs Go 1.24 or later. It offers the same tracing API as the JavaScript SDK. Go has no decorators or implicit async context, so the current span travels in a `context.Context`:
+
+```go
+ctx := context.Background()
+if err := yolotrace.Configure(yolotrace.WithSampleRate(0.1)); err != nil {
+	return err
+}
+
+err := yolotrace.Trace(ctx, "answer", yolotrace.SpanOptions{Kind: yolotrace.KindRun}, func(ctx context.Context) error {
+	return yolotrace.Trace(ctx, "lookup", yolotrace.SpanOptions{Kind: yolotrace.KindTool}, func(context.Context) error {
+		return nil
+	})
+})
+
+job, err := yolotrace.StartSpan(ctx, "upload", yolotrace.SpanOptions{
+	Kind:       yolotrace.KindTool,
+	Attributes: map[string]yolotrace.AttributeValue{"bytes": yolotrace.NumberValue(1024)},
+})
+job.End(nil) // or job.End(err) to record a failure
+
+headers := map[string]string{}
+yolotrace.Inject(ctx, headers)
+```
+
+- `Trace(ctx, name, options, fn)` runs `fn` as a span. The error `fn` returns marks the span as failed and is returned unchanged. A panic is recorded and then propagates.
+- `Configure` takes functional options, and omitted options return to their defaults. It returns an error for an invalid sample rate or a negative limit.
+- `ContinueTrace(ctx, Extract(headers))` continues a trace from another process. `Extract` returns `nil` when the value is missing or malformed.
+
 ## Architecture
 
 YoloTrace is a **pragmatic modular monolith**: one deployable Python application, organized into modules with explicit boundaries. Modules talk through their public interfaces rather than reaching into each other's internals, so they can be split out later if real load demands it.
 
 ## Development setup
 
-Requirements: [uv](https://docs.astral.sh/uv/) and Python 3.12+.
+Requirements: [uv](https://docs.astral.sh/uv/) and Python 3.12+. The JavaScript SDK needs Node.js 20+ and the Go SDK needs Go 1.24+.
 
 ```bash
 uv sync
@@ -164,6 +194,14 @@ uv run pytest
 uv run ruff check
 uv run ruff format --check
 ```
+
+To run every SDK's checks, as CI should, run the script from the project root:
+
+```bash
+bash scripts/check.sh
+```
+
+It runs `uv run poe check` for Python, `npm run check` for JavaScript (typecheck, ESLint, Prettier, tests and audit), and gofmt, vet, staticcheck, module tidiness, tests and govulncheck for Go. It stops at the first failing step.
 
 ## License
 
