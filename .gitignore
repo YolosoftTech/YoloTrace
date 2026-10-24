@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Local data and secrets
+.env
+*.db
+*.sqlite3
+
+# Local tooling
+.claude/
+.vscode/
+.idea/
+
+# Product backlog (kept local)
+product.md
