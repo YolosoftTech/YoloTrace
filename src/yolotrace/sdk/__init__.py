@@ -1,5 +1,6 @@
 """Public Python SDK for recording AI agent activity."""
 
+from yolotrace.sdk.instrumentation import instrument_anthropic, instrument_openai
 from yolotrace.sdk.tracing import (
     Span,
     SpanKind,
@@ -17,6 +18,8 @@ __all__ = [
     "__version__",
     "current_span",
     "finished_spans",
+    "instrument_anthropic",
+    "instrument_openai",
     "start_span",
     "trace",
 ]

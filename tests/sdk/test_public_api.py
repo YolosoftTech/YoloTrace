@@ -10,6 +10,8 @@ STABLE_API = [
     "__version__",
     "current_span",
     "finished_spans",
+    "instrument_anthropic",
+    "instrument_openai",
     "start_span",
     "trace",
 ]

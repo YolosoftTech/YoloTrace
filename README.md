@@ -39,6 +39,17 @@ job = start_span("upload", kind="tool", attributes={"bytes": 1024})
 job.end()  # or job.end(exc) to record a failure
 ```
 
+To record OpenAI and Anthropic calls automatically, opt in once at startup. Each `chat.completions.create` (OpenAI) or `messages.create` (Anthropic) call becomes an `llm` span with the provider, model, and token counts:
+
+```python
+from yolotrace import instrument_anthropic, instrument_openai
+
+instrument_openai()  # requires the openai package
+instrument_anthropic()  # requires the anthropic package
+```
+
+Calling them more than once is safe. Streaming (`stream=True`) and async calls are not instrumented yet.
+
 - Nested spans link to their parent through `parent_id`.
 - Exceptions are recorded on the span (`status == "error"`, `error == "Type: message"`) and re-raised unchanged.
 - Finished spans are kept in process memory. Storage and the ingestion API are not built yet.
