@@ -10,6 +10,8 @@ from yolotrace.sdk import (
     instrument_langchain,
     instrument_openai,
     instrument_openai_agents,
+    propagate_context,
+    running_spans,
     start_span,
     trace,
 )
@@ -24,6 +26,8 @@ __all__ = [
     "instrument_langchain",
     "instrument_openai",
     "instrument_openai_agents",
+    "propagate_context",
+    "running_spans",
     "start_span",
     "trace",
 ]

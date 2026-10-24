@@ -11,6 +11,8 @@ from yolotrace.sdk.tracing import (
     SpanKind,
     current_span,
     finished_spans,
+    propagate_context,
+    running_spans,
     start_span,
     trace,
 )
@@ -27,6 +29,8 @@ __all__ = [
     "instrument_langchain",
     "instrument_openai",
     "instrument_openai_agents",
+    "propagate_context",
+    "running_spans",
     "start_span",
     "trace",
 ]
