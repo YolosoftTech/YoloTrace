@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import functools
 import inspect
 import time
@@ -24,6 +25,7 @@ AttributeValue = str | int | float | bool | None
 
 _current: ContextVar[Span | None] = ContextVar("yolotrace_current_span", default=None)
 _finished: list[Span] = []
+_running: dict[str, Span] = {}
 
 
 @dataclass
@@ -59,6 +61,7 @@ class Span:
         if exc is not None:
             self.status = "error"
             self.error = f"{type(exc).__name__}: {exc}"
+        _running.pop(self.span_id, None)
         _finished.append(self)
 
 
@@ -70,6 +73,32 @@ def current_span() -> Span | None:
 def finished_spans() -> list[Span]:
     """Return a copy of every span that has ended in this process, in end order."""
     return list(_finished)
+
+
+def running_spans() -> list[Span]:
+    """Return every span that has started but not ended yet, in start order.
+
+    Use it to see long-running workflows and background jobs while they are still
+    working, before their spans appear in ``finished_spans``.
+    """
+    return list(_running.values())
+
+
+def propagate_context[**P, R](func: Callable[P, R]) -> Callable[P, R]:
+    """Return ``func`` wrapped so it runs in a copy of the current context.
+
+    Threads and executors do not copy context variables, so work handed to them
+    would lose its parent span. Call this in the thread that starts the work, then
+    give the result to the thread or executor. Spans that ``func`` records are
+    parented to the span current at the time of this call.
+    """
+    context = contextvars.copy_context()
+
+    @functools.wraps(func)
+    def run_in_context(*args: P.args, **kwargs: P.kwargs) -> R:
+        return context.run(func, *args, **kwargs)
+
+    return run_in_context
 
 
 def start_span(
@@ -92,7 +121,7 @@ def start_span(
 
 def _new_span(name: str, kind: SpanKind, attributes: dict[str, AttributeValue]) -> Span:
     parent = _current.get()
-    return Span(
+    span = Span(
         name=name,
         span_id=uuid.uuid4().hex,
         parent_id=parent.span_id if parent else None,
@@ -100,6 +129,8 @@ def _new_span(name: str, kind: SpanKind, attributes: dict[str, AttributeValue]) 
         kind=kind,
         attributes=attributes,
     )
+    _running[span.span_id] = span
+    return span
 
 
 def _iterate_sync[T](

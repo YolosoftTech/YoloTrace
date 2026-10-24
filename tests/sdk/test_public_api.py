@@ -14,6 +14,8 @@ STABLE_API = [
     "instrument_langchain",
     "instrument_openai",
     "instrument_openai_agents",
+    "propagate_context",
+    "running_spans",
     "start_span",
     "trace",
 ]

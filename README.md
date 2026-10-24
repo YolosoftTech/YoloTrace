@@ -53,6 +53,26 @@ Calling them more than once is safe. Async clients are instrumented too. A strea
 `@trace()` also works on `async def` functions and on generator and async generator functions, where the span covers the whole stream. Concurrent tasks each keep their own parent span.
 
 - Nested spans link to their parent through `parent_id`.
+- `running_spans()` lists spans that have started but not ended, so long-running workflows are visible while they run.
+- Threads and executors do not copy context, so wrap the work with `propagate_context` in the thread that starts it. Spans it records are then parented to the current span. Asyncio tasks already keep their parent.
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+from yolotrace import propagate_context, trace
+
+
+@trace()
+def process(item: str) -> None:
+    ...
+
+
+@trace("batch")
+def run_batch(items: list[str]) -> None:
+    with ThreadPoolExecutor() as pool:
+        for item in items:
+            pool.submit(propagate_context(process), item)
+```
 - Exceptions are recorded on the span (`status == "error"`, `error == "Type: message"`) and re-raised unchanged.
 - Finished spans are kept in process memory. Storage and the ingestion API are not built yet.
 
