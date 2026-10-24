@@ -2,7 +2,7 @@ import sys
 from collections.abc import Iterator
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 from anthropic import Anthropic
 from anthropic.resources.messages import Messages
@@ -49,10 +49,10 @@ def restore_clients() -> Iterator[None]:
 
 
 def _openai_client(status: int, body: dict[str, Any]) -> OpenAI:
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(status, json=body)
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(status, json=body)
 
-    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    http_client = httpx2.Client(transport=httpx2.MockTransport(handler))
     return OpenAI(api_key="test", http_client=http_client, max_retries=0)
 
 
@@ -65,7 +65,7 @@ def _anthropic_messages(response: Message | None = None) -> Messages:
         return response
 
     client = Anthropic(api_key="test", max_retries=0)
-    client.post = post  # type: ignore[method-assign]
+    client.post = post  # type: ignore[assignment]
     return Messages(client)
 
 

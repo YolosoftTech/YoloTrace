@@ -136,9 +136,8 @@ class trace:
         exc_type: type[BaseException] | None,
         exc: BaseException | None,
         tb: TracebackType | None,
-    ) -> bool:
+    ) -> None:
         span = self._span
         assert span is not None
         _current.reset(self._token)
         span.end(exc)
-        return False
