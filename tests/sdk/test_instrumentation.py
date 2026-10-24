@@ -1,14 +1,14 @@
 import sys
 from collections.abc import Iterator
-from typing import Any
 
 import httpx2
 import pytest
 from anthropic import Anthropic
-from anthropic.resources.messages import Messages
+from anthropic.resources.messages import AsyncMessages, Messages
 from anthropic.types import Message
 from openai import OpenAI
-from openai.resources.chat.completions import Completions
+from openai.resources.chat.completions import AsyncCompletions, Completions
+from openai.types.chat import ChatCompletion
 
 from yolotrace.sdk import finished_spans, instrument_anthropic, instrument_openai, trace
 
@@ -42,13 +42,17 @@ ANTHROPIC_OK = {
 @pytest.fixture(autouse=True)
 def restore_clients() -> Iterator[None]:
     completions_create = Completions.create
+    async_completions_create = AsyncCompletions.create
     messages_create = Messages.create
+    async_messages_create = AsyncMessages.create
     yield
     Completions.create = completions_create  # type: ignore[method-assign]
+    AsyncCompletions.create = async_completions_create  # type: ignore[method-assign]
     Messages.create = messages_create  # type: ignore[method-assign]
+    AsyncMessages.create = async_messages_create  # type: ignore[method-assign]
 
 
-def _openai_client(status: int, body: dict[str, Any]) -> OpenAI:
+def _openai_client(status: int, body: dict[str, object]) -> OpenAI:
     def handler(request: httpx2.Request) -> httpx2.Response:
         return httpx2.Response(status, json=body)
 
@@ -59,7 +63,7 @@ def _openai_client(status: int, body: dict[str, Any]) -> OpenAI:
 def _anthropic_messages(response: Message | None = None) -> Messages:
     """Messages resource whose transport returns ``response``, or raises if it is None."""
 
-    def post(*args: Any, **kwargs: Any) -> Message:
+    def post(*args: object, **kwargs: object) -> Message:
         if response is None:
             raise RuntimeError("bad input")
         return response
@@ -69,14 +73,14 @@ def _anthropic_messages(response: Message | None = None) -> Messages:
     return Messages(client)
 
 
-def _openai_chat(client: OpenAI) -> Any:
+def _openai_chat(client: OpenAI) -> ChatCompletion:
     return client.chat.completions.create(
         model="gpt-test",
         messages=[{"role": "user", "content": "hello"}],
     )
 
 
-def _anthropic_message(messages: Messages) -> Any:
+def _anthropic_message(messages: Messages) -> Message:
     return messages.create(
         model="claude-test",
         max_tokens=100,

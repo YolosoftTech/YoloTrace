@@ -1,32 +1,22 @@
 import asyncio
 import sys
-from typing import Any
+from collections.abc import Iterator
 
 import pytest
-from langchain_core.callbacks import CallbackManagerForLLMRun
-from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, BaseMessage
-from langchain_core.outputs import ChatResult
+from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 from langchain_core.tools import tool
 
 from yolotrace.sdk import finished_spans, instrument_langchain, trace
 
 
-class _FailingChatModel(BaseChatModel):
-    @property
-    def _llm_type(self) -> str:
-        return "failing"
-
-    def _generate(
-        self,
-        messages: list[BaseMessage],
-        stop: list[str] | None = None,
-        run_manager: CallbackManagerForLLMRun | None = None,
-        **kwargs: Any,
-    ) -> ChatResult:
+def _failing_model() -> GenericFakeChatModel:
+    def replies() -> Iterator[AIMessage]:
         raise RuntimeError("bad input")
+        yield  # pragma: no cover - makes ``replies`` a generator
+
+    return GenericFakeChatModel(messages=replies())
 
 
 @tool
@@ -115,7 +105,7 @@ def test_failed_chat_model_call_is_recorded_and_reraised() -> None:
     instrument_langchain()
 
     with pytest.raises(RuntimeError, match="bad input"):
-        _FailingChatModel().invoke("hello")
+        _failing_model().invoke("hello")
 
     (span,) = finished_spans()
     assert span.kind == "llm"

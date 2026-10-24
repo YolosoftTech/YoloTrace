@@ -48,7 +48,9 @@ instrument_openai()  # requires the openai package
 instrument_anthropic()  # requires the anthropic package
 ```
 
-Calling them more than once is safe. Streaming (`stream=True`) and async calls are not instrumented yet.
+Calling them more than once is safe. Async clients are instrumented too. A streaming call (`stream=True`) is one span that ends when the stream is exhausted or closed, and its token counts come from the stream's usage events.
+
+`@trace()` also works on `async def` functions and on generator and async generator functions, where the span covers the whole stream. Concurrent tasks each keep their own parent span.
 
 - Nested spans link to their parent through `parent_id`.
 - Exceptions are recorded on the span (`status == "error"`, `error == "Type: message"`) and re-raised unchanged.

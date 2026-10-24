@@ -1,7 +1,6 @@
 import asyncio
 import sys
 from collections.abc import Callable
-from typing import Any
 
 import httpx2
 import pytest
@@ -13,9 +12,9 @@ from yolotrace.sdk import Span, finished_spans, instrument_openai_agents, trace
 
 
 def _message(
-    content: str | None, tool_calls: list[dict[str, Any]] | None = None
-) -> dict[str, Any]:
-    message: dict[str, Any] = {"role": "assistant", "content": content}
+    content: str | None, tool_calls: list[dict[str, object]] | None = None
+) -> dict[str, object]:
+    message: dict[str, object] = {"role": "assistant", "content": content}
     if tool_calls is not None:
         message["tool_calls"] = tool_calls
     finish = "tool_calls" if tool_calls else "stop"
@@ -29,7 +28,7 @@ def _message(
     }
 
 
-def _tool_call(name: str, arguments: str) -> dict[str, Any]:
+def _tool_call(name: str, arguments: str) -> dict[str, object]:
     return {
         "id": f"call_{name}",
         "type": "function",
@@ -45,7 +44,7 @@ def _model_with_handler(
     return OpenAIChatCompletionsModel(model="gpt-test", openai_client=client)
 
 
-def _model(responses: list[dict[str, Any]]) -> OpenAIChatCompletionsModel:
+def _model(responses: list[dict[str, object]]) -> OpenAIChatCompletionsModel:
     """Chat Completions model that answers each request with the next canned response."""
     queue = iter(responses)
 

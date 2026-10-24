@@ -6,16 +6,16 @@ This module imports ``langchain_core`` directly, so it is only imported by
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextvars import ContextVar
-from typing import Any
 from uuid import UUID
 
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.messages import BaseMessage
-from langchain_core.outputs import LLMResult
+from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.outputs import ChatGeneration, LLMResult
 from langchain_core.tracers.context import register_configure_hook
 
-from yolotrace.sdk.tracing import Span, SpanKind, start_span
+from yolotrace.sdk.tracing import AttributeValue, Span, SpanKind, start_span
 
 
 class YoloTraceCallbackHandler(BaseCallbackHandler):
@@ -30,54 +30,56 @@ class YoloTraceCallbackHandler(BaseCallbackHandler):
 
     def on_chain_start(
         self,
-        serialized: dict[str, Any] | None,
-        inputs: dict[str, Any],
+        serialized: Mapping[str, object] | None,
+        inputs: Mapping[str, object],
         *,
         run_id: UUID,
         parent_run_id: UUID | None = None,
-        **kwargs: Any,
+        **kwargs: object,
     ) -> None:
         """Start a span for a chain, as a "run" span when it has no parent."""
         kind: SpanKind = "run" if parent_run_id is None else "step"
-        self._start(run_id, parent_run_id, kwargs.get("name") or "chain", kind)
+        self._start(run_id, parent_run_id, _text(kwargs.get("name"), "chain"), kind)
 
     def on_chain_end(
-        self, outputs: dict[str, Any], *, run_id: UUID, **kwargs: Any
+        self, outputs: Mapping[str, object], *, run_id: UUID, **kwargs: object
     ) -> None:
         """Finish the span of a chain that completed."""
         self._finish(run_id)
 
     def on_chain_error(
-        self, error: BaseException, *, run_id: UUID, **kwargs: Any
+        self, error: BaseException, *, run_id: UUID, **kwargs: object
     ) -> None:
         """Finish the span of a chain that raised, recording the error."""
         self._finish(run_id, error)
 
     def on_chat_model_start(
         self,
-        serialized: dict[str, Any] | None,
+        serialized: Mapping[str, object] | None,
         messages: list[list[BaseMessage]],
         *,
         run_id: UUID,
         parent_run_id: UUID | None = None,
-        **kwargs: Any,
+        **kwargs: object,
     ) -> None:
         """Start an "llm" span for a chat model call."""
-        self._start_model(run_id, parent_run_id, **kwargs)
+        self._start_model(run_id, parent_run_id, kwargs)
 
     def on_llm_start(
         self,
-        serialized: dict[str, Any] | None,
+        serialized: Mapping[str, object] | None,
         prompts: list[str],
         *,
         run_id: UUID,
         parent_run_id: UUID | None = None,
-        **kwargs: Any,
+        **kwargs: object,
     ) -> None:
         """Start an "llm" span for a text completion call."""
-        self._start_model(run_id, parent_run_id, **kwargs)
+        self._start_model(run_id, parent_run_id, kwargs)
 
-    def on_llm_end(self, response: LLMResult, *, run_id: UUID, **kwargs: Any) -> None:
+    def on_llm_end(
+        self, response: LLMResult, *, run_id: UUID, **kwargs: object
+    ) -> None:
         """Finish a model span, recording token counts when the provider reports them."""
         span = self._spans.get(run_id)
         if span is not None:
@@ -85,44 +87,50 @@ class YoloTraceCallbackHandler(BaseCallbackHandler):
         self._finish(run_id)
 
     def on_llm_error(
-        self, error: BaseException, *, run_id: UUID, **kwargs: Any
+        self, error: BaseException, *, run_id: UUID, **kwargs: object
     ) -> None:
         """Finish a model span that raised, recording the error."""
         self._finish(run_id, error)
 
     def on_tool_start(
         self,
-        serialized: dict[str, Any] | None,
+        serialized: Mapping[str, object] | None,
         input_str: str,
         *,
         run_id: UUID,
         parent_run_id: UUID | None = None,
-        **kwargs: Any,
+        **kwargs: object,
     ) -> None:
         """Start a "tool" span for a tool call."""
-        name = kwargs.get("name") or (serialized or {}).get("name") or "tool"
+        name = (
+            _text(kwargs.get("name")) or _text((serialized or {}).get("name")) or "tool"
+        )
         self._start(run_id, parent_run_id, name, "tool", {"tool_name": name})
 
-    def on_tool_end(self, output: Any, *, run_id: UUID, **kwargs: Any) -> None:
+    def on_tool_end(self, output: object, *, run_id: UUID, **kwargs: object) -> None:
         """Finish the span of a tool call that completed."""
         self._finish(run_id)
 
     def on_tool_error(
-        self, error: BaseException, *, run_id: UUID, **kwargs: Any
+        self, error: BaseException, *, run_id: UUID, **kwargs: object
     ) -> None:
         """Finish the span of a tool call that raised, recording the error."""
         self._finish(run_id, error)
 
     def _start_model(
-        self, run_id: UUID, parent_run_id: UUID | None, **kwargs: Any
+        self,
+        run_id: UUID,
+        parent_run_id: UUID | None,
+        kwargs: Mapping[str, object],
     ) -> None:
-        params = kwargs.get("invocation_params") or {}
+        params = kwargs.get("invocation_params")
+        model = params.get("model") if isinstance(params, dict) else None
         self._start(
             run_id,
             parent_run_id,
-            kwargs.get("name") or "llm",
+            _text(kwargs.get("name"), "llm"),
             "llm",
-            {"model": params.get("model")},
+            {"model": model if isinstance(model, str) else None},
         )
 
     def _start(
@@ -131,7 +139,7 @@ class YoloTraceCallbackHandler(BaseCallbackHandler):
         parent_run_id: UUID | None,
         name: str,
         kind: SpanKind,
-        attributes: dict[str, Any] | None = None,
+        attributes: Mapping[str, AttributeValue] | None = None,
     ) -> None:
         span = start_span(name, kind=kind, attributes=attributes)
         parent = None if parent_run_id is None else self._spans.get(parent_run_id)
@@ -145,15 +153,24 @@ class YoloTraceCallbackHandler(BaseCallbackHandler):
             span.end(error)
 
 
+def _text(value: object, default: str = "") -> str:
+    """Return ``value`` when it is a non-empty string, otherwise ``default``."""
+    return value if isinstance(value, str) and value else default
+
+
 def _record_usage(span: Span, response: LLMResult) -> None:
     for generations in response.generations:
         for generation in generations:
-            usage = getattr(
-                getattr(generation, "message", None), "usage_metadata", None
-            )
-            if usage:
-                span.set_attribute("input_tokens", usage["input_tokens"])
-                span.set_attribute("output_tokens", usage["output_tokens"])
+            if not isinstance(generation, ChatGeneration):
+                continue
+            message = generation.message
+            if isinstance(message, AIMessage) and message.usage_metadata:
+                span.set_attribute(
+                    "input_tokens", message.usage_metadata["input_tokens"]
+                )
+                span.set_attribute(
+                    "output_tokens", message.usage_metadata["output_tokens"]
+                )
                 return
 
 

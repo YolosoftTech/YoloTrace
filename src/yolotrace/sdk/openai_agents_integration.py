@@ -6,8 +6,6 @@ This module imports ``agents`` directly, so it is only imported by
 
 from __future__ import annotations
 
-from typing import Any
-
 from agents import add_trace_processor
 from agents.tracing import Span as AgentSpan
 from agents.tracing import Trace, TracingProcessor
@@ -20,7 +18,7 @@ from agents.tracing.span_data import (
     SpanData,
 )
 
-from yolotrace.sdk.tracing import Span, SpanKind, start_span
+from yolotrace.sdk.tracing import AttributeValue, Span, SpanKind, start_span
 
 
 class YoloTraceTracingProcessor(TracingProcessor):
@@ -41,7 +39,7 @@ class YoloTraceTracingProcessor(TracingProcessor):
         """Finish the "run" span of an Agents SDK trace."""
         self._finish(trace.trace_id)
 
-    def on_span_start(self, span: AgentSpan[Any]) -> None:
+    def on_span_start(self, span: AgentSpan[SpanData]) -> None:
         """Start a child span under the span or trace the Agents SDK reports as its parent."""
         name, kind, attributes = _describe(span.span_data)
         child = start_span(name, kind=kind, attributes=attributes)
@@ -50,7 +48,7 @@ class YoloTraceTracingProcessor(TracingProcessor):
             child.parent_id = parent.span_id
         self._spans[span.span_id] = child
 
-    def on_span_end(self, span: AgentSpan[Any]) -> None:
+    def on_span_end(self, span: AgentSpan[SpanData]) -> None:
         """Finish a child span, recording token usage and any error the Agents SDK reports."""
         child = self._spans.get(span.span_id)
         if child is None:
@@ -76,7 +74,7 @@ class YoloTraceTracingProcessor(TracingProcessor):
             span.end()
 
 
-def _describe(data: SpanData) -> tuple[str, SpanKind, dict[str, Any]]:
+def _describe(data: SpanData) -> tuple[str, SpanKind, dict[str, AttributeValue]]:
     if isinstance(data, GenerationSpanData):
         return "openai_agents.generation", "llm", {"model": data.model}
     if isinstance(data, ResponseSpanData):
@@ -84,7 +82,10 @@ def _describe(data: SpanData) -> tuple[str, SpanKind, dict[str, Any]]:
     if isinstance(data, FunctionSpanData):
         return data.name, "tool", {"tool_name": data.name}
     if isinstance(data, HandoffSpanData):
-        attributes = {"from_agent": data.from_agent, "to_agent": data.to_agent}
+        attributes: dict[str, AttributeValue] = {
+            "from_agent": data.from_agent,
+            "to_agent": data.to_agent,
+        }
         return "handoff", "step", attributes
     if isinstance(data, AgentSpanData):
         return data.name, "step", {}
@@ -96,9 +97,9 @@ def _record_usage(span: Span, data: SpanData) -> None:
         return
     input_tokens = data.usage.get("input_tokens")
     output_tokens = data.usage.get("output_tokens")
-    if input_tokens is not None:
+    if isinstance(input_tokens, int):
         span.set_attribute("input_tokens", input_tokens)
-    if output_tokens is not None:
+    if isinstance(output_tokens, int):
         span.set_attribute("output_tokens", output_tokens)
 
 
