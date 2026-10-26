@@ -5,10 +5,13 @@ import yolotrace
 from yolotrace import sdk
 
 STABLE_API = [
+    "InstrumentationPolicy",
+    "PolicyError",
     "Span",
     "SpanContext",
     "SpanKind",
     "__version__",
+    "apply_policy",
     "configure",
     "continue_trace",
     "current_span",
@@ -19,6 +22,7 @@ STABLE_API = [
     "instrument_langchain",
     "instrument_openai",
     "instrument_openai_agents",
+    "load_policy",
     "propagate_context",
     "running_spans",
     "start_span",

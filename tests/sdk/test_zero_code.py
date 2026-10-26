@@ -77,3 +77,22 @@ def test_failing_integration_warns_and_the_others_still_run(
         instrumented = zero_code.instrument_installed()
 
     assert instrumented == ["available"]
+
+
+def test_only_the_named_integrations_are_instrumented(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def openai() -> None:
+        pass
+
+    def anthropic() -> None:
+        pass
+
+    monkeypatch.setattr(
+        zero_code,
+        "_INTEGRATIONS",
+        (("openai", openai), ("anthropic", anthropic)),
+    )
+
+    assert zero_code.instrument_installed(frozenset({"anthropic"})) == ["anthropic"]
+    assert zero_code.supported_integrations() == frozenset({"openai", "anthropic"})

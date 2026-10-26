@@ -1,10 +1,13 @@
 """YoloTrace: open-source, self-hosted observability and debugging for AI agents."""
 
 from yolotrace.sdk import (
+    InstrumentationPolicy,
+    PolicyError,
     Span,
     SpanContext,
     SpanKind,
     __version__,
+    apply_policy,
     configure,
     continue_trace,
     current_span,
@@ -15,6 +18,7 @@ from yolotrace.sdk import (
     instrument_langchain,
     instrument_openai,
     instrument_openai_agents,
+    load_policy,
     propagate_context,
     running_spans,
     start_span,
@@ -22,10 +26,13 @@ from yolotrace.sdk import (
 )
 
 __all__ = [
+    "InstrumentationPolicy",
+    "PolicyError",
     "Span",
     "SpanContext",
     "SpanKind",
     "__version__",
+    "apply_policy",
     "configure",
     "continue_trace",
     "current_span",
@@ -36,6 +43,7 @@ __all__ = [
     "instrument_langchain",
     "instrument_openai",
     "instrument_openai_agents",
+    "load_policy",
     "propagate_context",
     "running_spans",
     "start_span",

@@ -20,15 +20,23 @@ _INTEGRATIONS: tuple[tuple[str, Callable[[], None]], ...] = (
 )
 
 
-def instrument_installed() -> list[str]:
+def supported_integrations() -> frozenset[str]:
+    """Return the names of every integration that ``instrument_installed`` knows about."""
+    return frozenset(name for name, _ in _INTEGRATIONS)
+
+
+def instrument_installed(integrations: frozenset[str] | None = None) -> list[str]:
     """Instrument each supported library that is installed and return the names of those instrumented.
 
+    ``integrations`` limits the run to the named integrations; ``None`` tries all of them.
     A library that is not installed is skipped. An integration that fails is reported with a
     warning instead of an exception, so tracing never stops the application from running.
     Calling it again does nothing for libraries that are already instrumented.
     """
     instrumented: list[str] = []
     for name, instrument in _INTEGRATIONS:
+        if integrations is not None and name not in integrations:
+            continue
         try:
             instrument()
         except ImportError:
