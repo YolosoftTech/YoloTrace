@@ -39,6 +39,18 @@ job = start_span("upload", kind="tool", attributes={"bytes": 1024})
 job.end()  # or job.end(exc) to record a failure
 ```
 
+To note a point in time inside a span, add an event. Events record a name, the time, and attributes, and they stay in the order they were added:
+
+```python
+from yolotrace import current_span
+
+span = current_span()
+if span is not None:
+    span.add_event("retry", {"attempt": 2, "reason": "rate_limited"})
+```
+
+The trace, span, event, and attribute model is described in [docs/data-model.md](docs/data-model.md).
+
 To record OpenAI and Anthropic calls automatically, opt in once at startup. Each `chat.completions.create` (OpenAI) or `messages.create` (Anthropic) call becomes an `llm` span with the provider, model, and token counts:
 
 ```python
@@ -168,7 +180,7 @@ apply_policy(load_policy(Path("yolotrace-policy.json").read_text(encoding="utf-8
 
 ### JavaScript/TypeScript SDK
 
-The JavaScript/TypeScript SDK lives in `sdk/javascript` and needs Node.js 20 or later. It has no runtime dependencies. It offers the same tracing API as the Python SDK, with functions instead of decorators:
+The JavaScript/TypeScript SDK lives in `sdk/javascript` and needs Node.js 20 or later. It has no runtime dependencies. It offers the same tracing API as the Python SDK, except events (`add_event`), which are Python-only for now. It uses functions instead of decorators:
 
 ```typescript
 import { configure, finishedSpans, inject, startSpan, trace } from "yolotrace";
@@ -192,7 +204,7 @@ trace("request", () => inject(headers));
 
 ### Go SDK
 
-The Go SDK lives in `sdk/go`, is a separate Go module with no dependencies, and needs Go 1.24 or later. It offers the same tracing API as the JavaScript SDK. Go has no decorators or implicit async context, so the current span travels in a `context.Context`:
+The Go SDK lives in `sdk/go`, is a separate Go module with no dependencies, and needs Go 1.24 or later. It offers the same tracing API as the JavaScript SDK, except events, which are Python-only for now. Go has no decorators or implicit async context, so the current span travels in a `context.Context`:
 
 ```go
 ctx := context.Background()

@@ -9,6 +9,7 @@ STABLE_API = [
     "PolicyError",
     "Span",
     "SpanContext",
+    "SpanEvent",
     "SpanKind",
     "__version__",
     "apply_policy",

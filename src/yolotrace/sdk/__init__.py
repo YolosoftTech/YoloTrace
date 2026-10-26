@@ -15,6 +15,7 @@ from yolotrace.sdk.policy import (
 from yolotrace.sdk.tracing import (
     Span,
     SpanContext,
+    SpanEvent,
     SpanKind,
     configure,
     continue_trace,
@@ -35,6 +36,7 @@ __all__ = [
     "PolicyError",
     "Span",
     "SpanContext",
+    "SpanEvent",
     "SpanKind",
     "__version__",
     "apply_policy",
