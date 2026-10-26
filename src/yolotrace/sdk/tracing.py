@@ -72,12 +72,26 @@ class SpanContext:
     sampled: bool = True
 
 
+@dataclass(frozen=True, slots=True)
+class SpanEvent:
+    """A point in time within a span, such as a retry, a cache miss, or a checkpoint.
+
+    ``time`` is the Unix time in seconds when the event was added. ``attributes``
+    follows the same rules as span attributes.
+    """
+
+    name: str
+    time: float
+    attributes: dict[str, AttributeValue] = field(default_factory=dict)
+
+
 @dataclass
 class Span:
     """One recorded unit of work, linked to its parent through ``parent_id``.
 
     ``trace_id`` is shared by every span of one trace, including spans recorded in
     other processes that continued the trace through ``inject`` and ``extract``.
+    ``events`` holds the points in time recorded inside the span, in the order added.
     """
 
     name: str
@@ -90,6 +104,7 @@ class Span:
     error: str | None = None
     kind: SpanKind = "step"
     attributes: dict[str, AttributeValue] = field(default_factory=dict)
+    events: list[SpanEvent] = field(default_factory=list)
     sampled: bool = True
 
     @property
@@ -105,12 +120,22 @@ class Span:
         A new key is dropped once the span holds ``max_attributes`` keys, and a string
         longer than ``max_attribute_length`` is cut short, so no error is raised.
         """
-        if (
-            key not in self.attributes
-            and len(self.attributes) >= _settings.max_attributes
-        ):
-            return
-        self.attributes[key] = _limit(value)
+        _put_attribute(self.attributes, key, value)
+
+    def add_event(
+        self, name: str, attributes: Mapping[str, AttributeValue] | None = None
+    ) -> None:
+        """Record an event named ``name`` at the current time, with optional ``attributes``.
+
+        The attributes obey the same limits as ``set_attribute``, so an event never
+        raises an error because of its size.
+        """
+        event_attributes: dict[str, AttributeValue] = {}
+        for key, value in (attributes or {}).items():
+            _put_attribute(event_attributes, key, value)
+        self.events.append(
+            SpanEvent(name=name, time=time.time(), attributes=event_attributes)
+        )
 
     def end(self, exc: BaseException | None = None) -> None:
         """Finish a span started with ``start_span``, optionally marking it as failed."""
@@ -152,6 +177,15 @@ def configure(
         max_attributes=max_attributes,
         max_attribute_length=max_attribute_length,
     )
+
+
+def _put_attribute(
+    target: dict[str, AttributeValue], key: str, value: AttributeValue
+) -> None:
+    """Store ``value`` under ``key`` in ``target``, applying the attribute limits."""
+    if key not in target and len(target) >= _settings.max_attributes:
+        return
+    target[key] = _limit(value)
 
 
 def _limit(value: AttributeValue) -> AttributeValue:
