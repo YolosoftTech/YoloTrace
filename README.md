@@ -138,6 +138,34 @@ configure(sample_rate=0.1, max_attributes=64, max_attribute_length=2048)
 
 Each call replaces every setting, and omitted settings return to their defaults: record everything, 128 attributes, and 4096 characters.
 
+### Versioned instrumentation policies
+
+For larger deployments, keep the recording settings and the enabled integrations in one JSON policy file and apply it at startup:
+
+```json
+{
+  "version": 1,
+  "sample_rate": 0.1,
+  "max_attributes": 64,
+  "max_attribute_length": 2048,
+  "integrations": ["openai", "anthropic"]
+}
+```
+
+```python
+from pathlib import Path
+
+from yolotrace import apply_policy, load_policy
+
+apply_policy(load_policy(Path("yolotrace-policy.json").read_text(encoding="utf-8")))
+```
+
+- `version` must be `1`, the only format this SDK reads. A policy with another version is rejected, so an old SDK never misreads a newer file.
+- Omitted fields take the defaults shown in the previous section. `integrations` omitted means every supported integration that is installed; `[]` instruments nothing.
+- Unknown fields, unknown integration names, and wrong value types raise `PolicyError` before anything is applied.
+
+`apply_policy` sets the recording settings the same way `configure` does, and returns the names of the integrations it instrumented.
+
 ### JavaScript/TypeScript SDK
 
 The JavaScript/TypeScript SDK lives in `sdk/javascript` and needs Node.js 20 or later. It has no runtime dependencies. It offers the same tracing API as the Python SDK, with functions instead of decorators:

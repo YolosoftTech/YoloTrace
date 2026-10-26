@@ -6,6 +6,12 @@ from yolotrace.sdk.instrumentation import (
     instrument_openai,
     instrument_openai_agents,
 )
+from yolotrace.sdk.policy import (
+    InstrumentationPolicy,
+    PolicyError,
+    apply_policy,
+    load_policy,
+)
 from yolotrace.sdk.tracing import (
     Span,
     SpanContext,
@@ -25,10 +31,13 @@ from yolotrace.sdk.tracing import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "InstrumentationPolicy",
+    "PolicyError",
     "Span",
     "SpanContext",
     "SpanKind",
     "__version__",
+    "apply_policy",
     "configure",
     "continue_trace",
     "current_span",
@@ -39,6 +48,7 @@ __all__ = [
     "instrument_langchain",
     "instrument_openai",
     "instrument_openai_agents",
+    "load_policy",
     "propagate_context",
     "running_spans",
     "start_span",
