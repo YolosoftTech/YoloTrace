@@ -94,6 +94,9 @@ export class Span {
   error: string | undefined = undefined;
   /** Metadata recorded for the span. */
   readonly attributes = new Map<string, AttributeValue>();
+  /** Monotonic clock reading at start, so the duration is not affected by system clock changes. */
+  private readonly monotonicStart = performance.now();
+  private elapsed: number | undefined = undefined;
 
   /**
    * Create a span. Use `trace` or `startSpan` instead, which also register the span.
@@ -122,12 +125,14 @@ export class Span {
     this.startTime = Date.now();
   }
 
-  /** Milliseconds between start and end, or `undefined` while the span is still running. */
+  /**
+   * Milliseconds between start and end, or `undefined` while the span is still running.
+   *
+   * It is measured with a monotonic clock, so a change to the system clock during the span
+   * cannot make it negative. It can differ from `endTime - startTime` for that reason.
+   */
   get duration(): number | undefined {
-    if (this.endTime === undefined) {
-      return undefined;
-    }
-    return this.endTime - this.startTime;
+    return this.elapsed;
   }
 
   /**
@@ -157,6 +162,7 @@ export class Span {
       throw new Error(`span ${this.name} has already ended`);
     }
     this.endTime = Date.now();
+    this.elapsed = performance.now() - this.monotonicStart;
     if (failure.length === 1) {
       this.status = "error";
       this.error = truncate(describeError(failure[0]));

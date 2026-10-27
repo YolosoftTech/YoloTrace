@@ -213,6 +213,19 @@ describe("startSpan", () => {
     assert.ok((span.duration ?? -1) >= 0);
   });
 
+  it("measures duration without the wall clock, so a clock change cannot make it negative", (t) => {
+    const readings = [1_000_000, 900_000];
+    t.mock.method(Date, "now", () => readings.shift() ?? 0);
+
+    const span = startSpan("clock");
+    span.end();
+
+    assert.equal(span.startTime, 1_000_000);
+    assert.equal(span.endTime, 900_000);
+    assert.ok((span.duration ?? -1) >= 0);
+    assert.ok((span.duration ?? Infinity) < 1000);
+  });
+
   it("records a failure passed to end", () => {
     const span = startSpan("upload");
     span.end(new Error("disk full"));

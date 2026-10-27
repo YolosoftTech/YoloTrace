@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from yolotrace.sdk import finished_spans, trace
@@ -105,3 +107,17 @@ def test_exception_in_block_is_recorded_and_propagated() -> None:
     (span,) = finished_spans()
     assert span.status == "error"
     assert span.error == "KeyError: 'missing'"
+
+
+def test_duration_is_not_affected_by_wall_clock_jumps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wall_clock = iter([1000.0, 900.0])  # the system clock steps back during the span
+    monkeypatch.setattr(time, "time", lambda: next(wall_clock))
+
+    with trace("work") as span:
+        pass
+
+    assert span.start_time == 1000.0
+    assert span.end_time == 900.0
+    assert span.duration is not None and 0 <= span.duration < 1

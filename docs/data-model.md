@@ -41,7 +41,7 @@ A span is one recorded unit of work.
 | `kind` | `"run" \| "step" \| "llm" \| "tool"` | What the span represents. Default `"step"`. |
 | `start_time` | `float` | Unix time in seconds, from `time.time()`. |
 | `end_time` | `float \| None` | Unix time in seconds. `None` while the span is running. Set once. |
-| `duration` | `float \| None` | Derived: `end_time - start_time` in seconds, or `None` while running. |
+| `duration` | `float \| None` | Seconds from start to end, measured with a monotonic clock so a system clock change cannot make it negative. `None` while running. It can differ slightly from `end_time - start_time`. |
 | `status` | `str` | `"ok"` (default) or `"error"`. |
 | `error` | `str \| None` | `"Type: message"` for the exception that ended the span with an error. Cut to `max_attribute_length`. `None` otherwise. |
 | `attributes` | `dict[str, AttributeValue]` | Metadata about the span. See [Attributes](#attributes). |
