@@ -280,6 +280,74 @@ export function runningSpans(): Span[] {
 }
 
 /**
+ * The finished spans of one trace, grouped so that parents and children can be walked.
+ *
+ * `spans` holds them in start order. A span is a root when its parent is not part of the run.
+ * That covers top-level spans, spans whose parent was recorded in another process, and spans
+ * whose parent has not ended yet. Spans that started at the same time keep their end order.
+ */
+export class Run {
+  /** The trace ID shared by the run's spans. It identifies the run. */
+  readonly traceId: string;
+  /** The finished, recorded spans of the trace, in start order. */
+  readonly spans: readonly Span[];
+
+  /**
+   * Create a run. Use `runs` instead, which groups the finished spans for you.
+   *
+   * @param traceId The trace ID shared by the run's spans.
+   * @param spans The finished spans of the trace, in start order.
+   */
+  constructor(traceId: string, spans: readonly Span[]) {
+    this.traceId = traceId;
+    this.spans = spans;
+    Object.freeze(this);
+  }
+
+  /**
+   * Return the spans whose parent is not part of this run, in start order.
+   *
+   * @returns The root spans of the run.
+   */
+  get roots(): Span[] {
+    const spanIds = new Set(this.spans.map((span) => span.spanId));
+    return this.spans.filter((span) => span.parentId === undefined || !spanIds.has(span.parentId));
+  }
+
+  /**
+   * Return the spans of this run whose parent is `span`, in start order.
+   *
+   * @param span The parent span.
+   * @returns The children of `span` within this run.
+   */
+  children(span: Span): Span[] {
+    return this.spans.filter((child) => child.parentId === span.spanId);
+  }
+}
+
+/**
+ * Group the finished spans of this process into runs, one per trace.
+ *
+ * Spans are grouped by `traceId`. Runs appear in the order their first span started, and each
+ * run lists its spans in start order. Running spans are not included.
+ *
+ * @returns One run for each trace that has finished spans.
+ */
+export function runs(): Run[] {
+  const byTrace = new Map<string, Span[]>();
+  const ordered = [...finished].sort((a, b) => a.startTime - b.startTime);
+  for (const span of ordered) {
+    const group = byTrace.get(span.traceId);
+    if (group) {
+      group.push(span);
+    } else {
+      byTrace.set(span.traceId, [span]);
+    }
+  }
+  return [...byTrace].map(([traceId, spans]) => new Run(traceId, spans));
+}
+
+/**
  * Write the active trace context into `carrier` so another process can continue it.
  *
  * Call it where work leaves this process, such as before an HTTP request or when a job is

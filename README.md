@@ -65,6 +65,16 @@ Calling them more than once is safe. Async clients are instrumented too. A strea
 `@trace()` also works on `async def` functions and on generator and async generator functions, where the span covers the whole stream. Concurrent tasks each keep their own parent span.
 
 - Nested spans link to their parent through `parent_id`.
+- `runs()` groups the finished spans into runs, one per trace. Each `Run` lists its spans, its `roots`, and the `children` of any span:
+
+```python
+from yolotrace import runs
+
+for run in runs():
+    for root in run.roots:
+        print(root.name, [child.name for child in run.children(root)])
+```
+
 - `running_spans()` lists spans that have started but not ended, so long-running workflows are visible while they run.
 - Threads and executors do not copy context, so wrap the work with `propagate_context` in the thread that starts it. Spans it records are then parented to the current span. Asyncio tasks already keep their parent.
 
@@ -200,6 +210,7 @@ trace("request", () => inject(headers));
 
 - `trace(name, fn, options)` runs `fn` as a span. It works with sync functions and with promises, and the span stays current across `await`s. A thrown error is recorded and rethrown unchanged.
 - `continueTrace(extract(headers), fn)` continues a trace from another process, the same as `continue_trace` and `extract` in Python.
+- `runs()` groups the finished spans into `Run` objects, with `roots` and `children(span)`, the same as `runs` in Python.
 - Streams and async generators are not traced yet. Automatic instrumentation of LLM clients is not available in this SDK.
 
 ### Go SDK
@@ -231,6 +242,7 @@ yolotrace.Inject(ctx, headers)
 - `Trace(ctx, name, options, fn)` runs `fn` as a span. The error `fn` returns marks the span as failed and is returned unchanged. A panic is recorded and then propagates.
 - `Configure` takes functional options, and omitted options return to their defaults. It returns an error for an invalid sample rate or a negative limit.
 - `ContinueTrace(ctx, Extract(headers))` continues a trace from another process. `Extract` returns `nil` when the value is missing or malformed.
+- `Runs()` groups the finished spans into `Run` values, with `Roots()` and `Children(span)`, the same as `runs` in Python.
 
 ## Architecture
 
@@ -250,7 +262,7 @@ uv run ruff format --check
 To run every SDK's checks, as CI should, run the script from the project root:
 
 ```bash
-bash scripts/check.sh
+uv run poe check-all
 ```
 
 It runs `uv run poe check` for Python, `npm run check` for JavaScript (typecheck, ESLint, Prettier, tests and audit), and gofmt, vet, staticcheck, module tidiness, tests and govulncheck for Go. It stops at the first failing step.

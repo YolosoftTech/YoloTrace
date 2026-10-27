@@ -150,6 +150,30 @@ class Span:
             _finished.append(self)
 
 
+@dataclass(frozen=True, slots=True)
+class Run:
+    """The finished spans of one trace, grouped so that parents and children can be walked.
+
+    ``trace_id`` identifies the run. ``spans`` holds its spans in start order. A span is a
+    root when its parent is not part of the run. That covers top-level spans, spans whose
+    parent was recorded in another process, and spans whose parent has not ended yet.
+    Spans that started at the same clock reading keep the order in which they ended.
+    """
+
+    trace_id: str
+    spans: tuple[Span, ...]
+
+    @property
+    def roots(self) -> tuple[Span, ...]:
+        """Return the spans whose parent is not part of this run, in start order."""
+        span_ids = {span.span_id for span in self.spans}
+        return tuple(span for span in self.spans if span.parent_id not in span_ids)
+
+    def children(self, span: Span) -> tuple[Span, ...]:
+        """Return the spans of this run whose parent is ``span``, in start order."""
+        return tuple(child for child in self.spans if child.parent_id == span.span_id)
+
+
 def configure(
     *,
     sample_rate: float = 1.0,
@@ -273,6 +297,21 @@ def running_spans() -> list[Span]:
     working, before their spans appear in ``finished_spans``.
     """
     return list(_running.values())
+
+
+def runs() -> list[Run]:
+    """Group the finished spans of this process into runs, one per trace.
+
+    Spans are grouped by ``trace_id``. Runs appear in the order their first span started,
+    and each run lists its spans in start order. Spans that are still running are not included.
+    """
+    by_trace: dict[str, list[Span]] = {}
+    for span in sorted(_finished, key=lambda span: span.start_time):
+        by_trace.setdefault(span.trace_id, []).append(span)
+    return [
+        Run(trace_id=trace_id, spans=tuple(spans))
+        for trace_id, spans in by_trace.items()
+    ]
 
 
 def propagate_context[**P, R](func: Callable[P, R]) -> Callable[P, R]:

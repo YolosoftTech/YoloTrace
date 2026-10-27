@@ -61,6 +61,22 @@ A span is one recorded unit of work.
 - A span is current only inside its `with` block, its decorated call, or the running part of its generator. `start_span` does not make its span current.
 - Sibling spans run in order or concurrently. Concurrent asyncio tasks each keep their own parent. Threads need `propagate_context`.
 
+## Run
+
+A run is the finished spans of one trace, grouped so that parents and children can be walked. `runs()` returns them in Python, and `runs()` and `Runs()` do the same in the JavaScript and Go SDKs. Grouping happens when it is called and stores nothing new.
+
+| Field | Type | Rules |
+| --- | --- | --- |
+| `trace_id` | `str` | The shared `trace_id` of the run's spans. Identifies the run. |
+| `spans` | `tuple[Span, ...]` | Every finished, sampled span with that `trace_id`, in start order. |
+| `roots` | `tuple[Span, ...]` | Spans whose `parent_id` is not the `span_id` of another span in the run. |
+
+- `run.children(span)` returns the spans of the run whose `parent_id` is `span.span_id`, in start order.
+- A span is a root when its parent is not part of the run. That covers the top-level span, a span whose parent was recorded in another process, and a span whose parent has not ended yet. Once the parent ends, the child is no longer a root.
+- A run can have more than one root when one trace continues in several places. Its spans still form one run.
+- Runs are listed in the order their first span started. Running spans and unsampled spans are not part of any run.
+- Spans that started at the same clock reading keep the order in which they ended.
+
 ## Event
 
 An event records something that happened at one instant inside a span, such as a retry, a cache miss, or a checkpoint. Use an event when the thing has no duration of its own. Use a child span when it does.

@@ -3,6 +3,7 @@
  */
 
 export {
+  Run,
   Span,
   configure,
   continueTrace,
@@ -11,6 +12,7 @@ export {
   finishedSpans,
   inject,
   runningSpans,
+  runs,
   startSpan,
   trace,
 } from "./tracing.js";

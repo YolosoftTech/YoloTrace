@@ -13,6 +13,7 @@ from yolotrace.sdk.policy import (
     load_policy,
 )
 from yolotrace.sdk.tracing import (
+    Run,
     Span,
     SpanContext,
     SpanEvent,
@@ -25,6 +26,7 @@ from yolotrace.sdk.tracing import (
     inject,
     propagate_context,
     running_spans,
+    runs,
     start_span,
     trace,
 )
@@ -34,6 +36,7 @@ __version__ = "0.1.0"
 __all__ = [
     "InstrumentationPolicy",
     "PolicyError",
+    "Run",
     "Span",
     "SpanContext",
     "SpanEvent",
@@ -53,6 +56,7 @@ __all__ = [
     "load_policy",
     "propagate_context",
     "running_spans",
+    "runs",
     "start_span",
     "trace",
 ]

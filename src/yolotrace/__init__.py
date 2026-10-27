@@ -3,6 +3,7 @@
 from yolotrace.sdk import (
     InstrumentationPolicy,
     PolicyError,
+    Run,
     Span,
     SpanContext,
     SpanEvent,
@@ -22,6 +23,7 @@ from yolotrace.sdk import (
     load_policy,
     propagate_context,
     running_spans,
+    runs,
     start_span,
     trace,
 )
@@ -29,6 +31,7 @@ from yolotrace.sdk import (
 __all__ = [
     "InstrumentationPolicy",
     "PolicyError",
+    "Run",
     "Span",
     "SpanContext",
     "SpanEvent",
@@ -48,6 +51,7 @@ __all__ = [
     "load_policy",
     "propagate_context",
     "running_spans",
+    "runs",
     "start_span",
     "trace",
 ]

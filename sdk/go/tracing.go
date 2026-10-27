@@ -350,6 +350,68 @@ func RunningSpans() []*Span {
 	return slices.Clone(store.running)
 }
 
+// Run is the finished spans of one trace, grouped so that parents and children can be walked.
+//
+// Spans holds them in start order. A span is a root when its parent is not part of the run.
+// That covers top-level spans, spans whose parent was recorded in another process, and spans
+// whose parent has not ended yet. Spans that started at the same time keep their end order.
+type Run struct {
+	// TraceID is the trace ID shared by the run's spans. It identifies the run.
+	TraceID string
+	// Spans holds the finished, recorded spans of the trace, in start order.
+	Spans []*Span
+}
+
+// Roots returns the spans whose parent is not part of this run, in start order.
+func (r Run) Roots() []*Span {
+	spanIDs := make(map[string]bool, len(r.Spans))
+	for _, span := range r.Spans {
+		spanIDs[span.SpanID] = true
+	}
+	var roots []*Span
+	for _, span := range r.Spans {
+		if span.ParentID == "" || !spanIDs[span.ParentID] {
+			roots = append(roots, span)
+		}
+	}
+	return roots
+}
+
+// Children returns the spans of this run whose parent is span, in start order.
+func (r Run) Children(span *Span) []*Span {
+	var children []*Span
+	for _, child := range r.Spans {
+		if child.ParentID == span.SpanID {
+			children = append(children, child)
+		}
+	}
+	return children
+}
+
+// Runs groups the finished spans of this process into runs, one per trace.
+//
+// Spans are grouped by TraceID. Runs appear in the order their first span started, and each
+// run lists its spans in start order. Running spans are not included.
+func Runs() []Run {
+	finished := FinishedSpans()
+	slices.SortStableFunc(finished, func(a, b *Span) int {
+		return a.StartTime.Compare(b.StartTime)
+	})
+	var order []string
+	byTrace := make(map[string][]*Span)
+	for _, span := range finished {
+		if _, seen := byTrace[span.TraceID]; !seen {
+			order = append(order, span.TraceID)
+		}
+		byTrace[span.TraceID] = append(byTrace[span.TraceID], span)
+	}
+	result := make([]Run, 0, len(order))
+	for _, traceID := range order {
+		result = append(result, Run{TraceID: traceID, Spans: byTrace[traceID]})
+	}
+	return result
+}
+
 // newSpan creates a span under the active context of ctx and registers it as running when
 // it is recorded. It returns an error when options.Kind is not a known span kind.
 func newSpan(ctx context.Context, name string, options SpanOptions) (*Span, error) {
