@@ -7,6 +7,7 @@ from yolotrace import sdk
 STABLE_API = [
     "InstrumentationPolicy",
     "PolicyError",
+    "Run",
     "Span",
     "SpanContext",
     "SpanEvent",
@@ -26,6 +27,7 @@ STABLE_API = [
     "load_policy",
     "propagate_context",
     "running_spans",
+    "runs",
     "start_span",
     "trace",
 ]

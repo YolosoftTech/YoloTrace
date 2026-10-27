@@ -44,3 +44,4 @@ audit = { sequence = [{ cmd = "uv export --frozen --no-hashes --no-emit-project 
 test = { cmd = "pytest", help = "Run the test suite" }
 fix = { sequence = [{ cmd = "ruff check --fix src tests" }, { cmd = "ruff format src tests" }], help = "Apply ruff fixes and formatting" }
 check = { sequence = ["lint", "format-check", "typecheck", "security", "lock-check", "audit", "test"], help = "Run every check, as CI should" }
+check-all = { cmd = "python scripts/check.py", help = "Run every SDK's checks: Python, JavaScript and Go" }
