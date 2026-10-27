@@ -106,13 +106,17 @@ class Span:
     attributes: dict[str, AttributeValue] = field(default_factory=dict)
     events: list[SpanEvent] = field(default_factory=list)
     sampled: bool = True
+    _monotonic_start: float = field(default_factory=time.perf_counter, repr=False)
+    _duration: float | None = field(default=None, repr=False)
 
     @property
     def duration(self) -> float | None:
-        """Seconds between start and end, or ``None`` while the span is still running."""
-        if self.end_time is None:
-            return None
-        return self.end_time - self.start_time
+        """Seconds between start and end, or ``None`` while the span is still running.
+
+        It is measured with a monotonic clock, so a change to the system clock during the
+        span cannot make it negative. It can differ from ``end_time - start_time`` for that reason.
+        """
+        return self._duration
 
     def set_attribute(self, key: str, value: AttributeValue) -> None:
         """Store ``value`` under ``key``, replacing any earlier value for that key.
@@ -142,6 +146,7 @@ class Span:
         if self.end_time is not None:
             raise RuntimeError(f"span {self.name!r} has already ended")
         self.end_time = time.time()
+        self._duration = time.perf_counter() - self._monotonic_start
         if exc is not None:
             self.status = "error"
             self.error = _truncate(f"{type(exc).__name__}: {exc}")
