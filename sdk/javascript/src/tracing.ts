@@ -31,6 +31,16 @@ export interface SpanContext {
   readonly sampled: boolean;
 }
 
+/** A point in time within a span, such as a retry or a cache miss. */
+export interface SpanEvent {
+  /** What happened, such as `"retry"`. */
+  readonly name: string;
+  /** Epoch milliseconds when the event was added. */
+  readonly time: number;
+  /** Details of the event. Same rules as span attributes. */
+  readonly attributes: Readonly<Record<string, AttributeValue>>;
+}
+
 /** Options for `configure`. Omitted settings return to their defaults. */
 export interface ConfigureOptions {
   /** Fraction of new traces to record, from 0 to 1. Defaults to 1, which records everything. */
@@ -94,6 +104,8 @@ export class Span {
   error: string | undefined = undefined;
   /** Metadata recorded for the span. */
   readonly attributes = new Map<string, AttributeValue>();
+  /** Points in time recorded inside the span, in the order they were added. */
+  readonly events: SpanEvent[] = [];
   /** Monotonic clock reading at start, so the duration is not affected by system clock changes. */
   private readonly monotonicStart = performance.now();
   private elapsed: number | undefined = undefined;
@@ -149,6 +161,26 @@ export class Span {
       return;
     }
     this.attributes.set(key, limit(value));
+  }
+
+  /**
+   * Record an event named `name` at the current time, with optional `attributes`.
+   *
+   * The attributes obey the same limits as `setAttribute`, so an event never throws because of
+   * its size.
+   *
+   * @param name What happened, such as `"retry"`.
+   * @param attributes Details of the event.
+   */
+  addEvent(name: string, attributes: Readonly<Record<string, AttributeValue>> = {}): void {
+    const kept = new Map<string, AttributeValue>();
+    for (const [key, value] of Object.entries(attributes)) {
+      if (!kept.has(key) && kept.size >= settings.maxAttributes) {
+        continue;
+      }
+      kept.set(key, limit(value));
+    }
+    this.events.push({ name, time: Date.now(), attributes: Object.fromEntries(kept) });
   }
 
   /**

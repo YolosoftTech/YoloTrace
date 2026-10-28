@@ -5,6 +5,7 @@ import yolotrace
 from yolotrace import sdk
 
 STABLE_API = [
+    "ExportError",
     "InstrumentationPolicy",
     "PolicyError",
     "Run",
@@ -17,6 +18,7 @@ STABLE_API = [
     "configure",
     "continue_trace",
     "current_span",
+    "export_spans",
     "extract",
     "finished_spans",
     "inject",
