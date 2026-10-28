@@ -6,7 +6,12 @@ from dataclasses import dataclass
 
 import pytest
 
-from yolotrace.ingestion.server import INGEST_PATH, MAX_BODY_BYTES, IngestionServer
+from yolotrace.ingestion.server import (
+    INGEST_PATH,
+    MAX_BODY_BYTES,
+    OTLP_TRACES_PATH,
+    IngestionServer,
+)
 from yolotrace.ingestion.store import TraceStore
 from yolotrace.sdk.export import SCHEMA_VERSION, JsonValue
 
@@ -141,6 +146,7 @@ def test_unknown_path_is_not_found(
 
     assert response.status == 404
     assert "send spans to /v1/spans" in str(response.json["error"])
+    assert "traces to /v1/traces" in str(response.json["error"])
     assert store.spans() == []
 
 
@@ -189,4 +195,108 @@ def test_body_over_the_size_limit_is_refused_before_it_is_read(
 
     assert response.status == 413
     assert b"larger than" in body
+    assert store.spans() == []
+
+
+def _otlp_request(name: str = "answer") -> bytes:
+    """Return an OTLP/HTTP JSON request holding one valid span named ``name``."""
+    span: dict[str, JsonValue] = {
+        "traceId": "0af7651916cd43dd8448eb211c80319c",
+        "spanId": "b7ad6b7169203331",
+        "name": name,
+        "startTimeUnixNano": "1000500000000",
+        "endTimeUnixNano": "1001000000000",
+    }
+    return json.dumps({"resourceSpans": [{"scopeSpans": [{"spans": [span]}]}]}).encode()
+
+
+def _post_with_headers(
+    server: IngestionServer, path: str, body: bytes, headers: dict[str, str]
+) -> _Response:
+    """Send one POST request with ``body`` and ``headers`` to ``server`` and return its response."""
+    connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+    try:
+        connection.request("POST", path, body=body, headers=headers)
+        response = connection.getresponse()
+        return _Response(status=response.status, body=response.read())
+    finally:
+        connection.close()
+
+
+def test_otlp_json_request_is_stored_and_acknowledged_with_an_empty_object(
+    running_server: tuple[IngestionServer, TraceStore],
+) -> None:
+    server, store = running_server
+
+    response = _post(server, OTLP_TRACES_PATH, _otlp_request("answer"))
+
+    assert response.status == 200
+    assert response.json == {}
+    assert [span.name for span in store.spans()] == ["answer"]
+
+
+def test_invalid_otlp_request_is_refused_and_stores_nothing(
+    running_server: tuple[IngestionServer, TraceStore],
+) -> None:
+    server, store = running_server
+
+    response = _post(
+        server,
+        OTLP_TRACES_PATH,
+        b'{"resourceSpans": [{"scopeSpans": [{"spans": [{}]}]}]}',
+    )
+
+    assert response.status == 400
+    assert "is required" in str(response.json["error"])
+    assert store.spans() == []
+
+
+def test_otlp_protobuf_request_is_refused_with_the_protocol_to_use(
+    running_server: tuple[IngestionServer, TraceStore],
+) -> None:
+    server, store = running_server
+
+    response = _post_with_headers(
+        server,
+        OTLP_TRACES_PATH,
+        b"protobuf-encoded-request",
+        {"Content-Type": "application/x-protobuf"},
+    )
+
+    assert response.status == 415
+    assert "http/json" in str(response.json["error"])
+    assert store.spans() == []
+
+
+def test_compressed_otlp_request_is_refused(
+    running_server: tuple[IngestionServer, TraceStore],
+) -> None:
+    server, store = running_server
+
+    response = _post_with_headers(
+        server,
+        OTLP_TRACES_PATH,
+        _otlp_request(),
+        {"Content-Type": "application/json", "Content-Encoding": "gzip"},
+    )
+
+    assert response.status == 415
+    assert "compressed" in str(response.json["error"])
+    assert store.spans() == []
+
+
+def test_otlp_request_without_content_length_is_refused(
+    running_server: tuple[IngestionServer, TraceStore],
+) -> None:
+    server, store = running_server
+    connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+    try:
+        connection.putrequest("POST", OTLP_TRACES_PATH, skip_accept_encoding=True)
+        connection.endheaders()
+        response = connection.getresponse()
+        response.read()
+    finally:
+        connection.close()
+
+    assert response.status == 411
     assert store.spans() == []
