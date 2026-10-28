@@ -144,6 +144,8 @@ except ExportError as error:
 - The server stores accepted spans in memory, so they are lost when it stops. It has no authentication yet, so keep it on localhost or a network you trust.
 - A batch is accepted only when every span in it is valid, and the server answers with the reason when it is not.
 
+OpenTelemetry applications can send traces to the same server at `http://127.0.0.1:4318/v1/traces` in OTLP/HTTP JSON form, with `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`. Protobuf is not supported yet.
+
 The JSON format and the endpoint are described in [docs/ingestion-api.md](docs/ingestion-api.md).
 
 ### Tracing across services and processes

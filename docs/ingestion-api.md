@@ -104,10 +104,41 @@ Request headers: `Content-Length` is required. The body must be at most 16 MiB. 
 
 A batch is stored only when every span in it is valid, so a rejected batch never leaves part of itself behind.
 
+## OpenTelemetry traces
+
+Applications that already export OpenTelemetry traces can send them to the same server. It accepts OTLP/HTTP requests in JSON form at `POST /v1/traces`. For the Python OpenTelemetry exporter, set `OTEL_EXPORTER_OTLP_PROTOCOL=http/json` and `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4318/v1/traces`.
+
+Each OTLP span becomes a YoloTrace span:
+
+| OTLP | YoloTrace |
+| --- | --- |
+| `traceId`, `spanId`, `parentSpanId` | `trace_id`, `span_id`, `parent_id`. An empty `parentSpanId` makes a root span. |
+| `name` | `name` |
+| `startTimeUnixNano`, `endTimeUnixNano` | `start_time`, `end_time` in Unix seconds, and `duration` from the difference |
+| `status.code` `2` or `STATUS_CODE_ERROR` | `status` is `error` and `error` is `"Type: message"` from the first `exception` event, else the status message, else `Error`. Any other code is `ok`. |
+| `attributes` | `attributes`. Resource attributes are copied onto each span, and a span's own attribute wins on a clash. |
+| `events` | `events`, with `timeUnixNano` in seconds |
+
+Attribute values keep their type. Arrays, key-value lists, and byte values are stored as JSON text, because attributes hold primitives only.
+
+The kind is taken from the OpenTelemetry GenAI attributes. `gen_ai.operation.name` set to `execute_tool` gives `tool`, `invoke_agent` gives `run`, and `chat`, `text_completion`, `generate_content`, `embeddings`, or a `gen_ai.request.model` attribute gives `llm`. Any other span is `run` when it has no parent and `step` when it has one. Spans are always stored as sampled, because OpenTelemetry sends only sampled spans.
+
+Responses:
+
+| Status | When | Body |
+| --- | --- | --- |
+| `200 OK` | Every span is valid and stored. | `{}`, the empty success response of OTLP |
+| `400 Bad Request` | The body is not valid OTLP JSON. Nothing from the request is stored. | `{"error": "<the first invalid field>"}` |
+| `411 Length Required` | No `Content-Length` header. | `{"error": "..."}` |
+| `413 Content Too Large` | The body is larger than 16 MiB. | `{"error": "..."}` |
+| `415 Unsupported Media Type` | The `Content-Type` is not `application/json`, or the body is compressed. | `{"error": "..."}` |
+
+Protobuf and compressed requests are not supported yet. A request with a missing `resourceSpans`, `scopeSpans`, or `spans` field is treated as empty, as OTLP JSON omits empty lists.
+
 ## Not yet supported
 
 - Authentication, signed credentials, and network restrictions.
 - Persistent storage, retention, and deduplication of retried spans.
 - Validation limits on event counts and attribute counts; the SDK's own limits (`configure`) apply at the source.
 - Out-of-order and partially completed runs are stored as received, without any reconciliation.
-- Health checks, batch compression, and OpenTelemetry formats.
+- Health checks, batch compression, and OpenTelemetry protobuf or compressed requests (see below).

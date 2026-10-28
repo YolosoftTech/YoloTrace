@@ -1,4 +1,4 @@
-"""HTTP server that accepts JSON trace batches on ``POST /v1/spans``."""
+"""HTTP server that accepts JSON trace batches on ``POST /v1/spans`` and OTLP/HTTP JSON on ``POST /v1/traces``."""
 
 from __future__ import annotations
 
@@ -6,12 +6,16 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
+from yolotrace.ingestion.otlp import parse_otlp_request
 from yolotrace.ingestion.parsing import IngestionError, parse_batch
 from yolotrace.ingestion.store import TraceStore
 from yolotrace.sdk.export import JsonValue
 
 INGEST_PATH = "/v1/spans"
-"""The route that accepts a batch of spans."""
+"""The route that accepts a batch of spans in the YoloTrace JSON format."""
+
+OTLP_TRACES_PATH = "/v1/traces"
+"""The OpenTelemetry route that accepts OTLP/HTTP JSON trace requests."""
 
 DEFAULT_PORT = 4318
 """Port the ``serve`` command listens on by default, the same as the OpenTelemetry HTTP port."""
@@ -34,28 +38,76 @@ class _IngestionHandler(BaseHTTPRequestHandler):
     server: IngestionServer
 
     def do_POST(self) -> None:
-        """Accept a batch on ``INGEST_PATH``, store its spans, and answer 202 with how many were accepted."""
-        if urlsplit(self.path).path != INGEST_PATH:
+        """Route a request to the handler for its path. Each handler stores the spans it accepts."""
+        path = urlsplit(self.path).path
+        if path not in (INGEST_PATH, OTLP_TRACES_PATH):
             self._discard_body()
             self._reply(
                 404,
-                {"error": f"no endpoint at {self.path}; send spans to {INGEST_PATH}"},
+                {
+                    "error": f"no endpoint at {self.path}; send spans to {INGEST_PATH} "
+                    f"or OpenTelemetry traces to {OTLP_TRACES_PATH}"
+                },
             )
             return
+        body = self._read_body()
+        if body is None:
+            return
+        if path == OTLP_TRACES_PATH:
+            self._accept_otlp(body)
+        else:
+            self._accept_spans(body)
+
+    def _read_body(self) -> bytes | None:
+        """Return the request body, or ``None`` after replying with an error when it cannot be read."""
         length = self.headers.get("Content-Length")
         if length is None or not length.isdigit():
             self._reply(411, {"error": "a Content-Length header is required"})
-            return
+            return None
         if int(length) > MAX_BODY_BYTES:
             self._reply(413, {"error": f"body is larger than {MAX_BODY_BYTES} bytes"})
-            return
+            return None
+        return self.rfile.read(int(length))
+
+    def _accept_spans(self, body: bytes) -> None:
+        """Store the batch in ``body`` and answer 202 with how many spans were accepted."""
         try:
-            spans = parse_batch(self.rfile.read(int(length)))
+            spans = parse_batch(body)
         except IngestionError as error:
             self._reply(400, {"error": str(error)})
             return
         self.server.store.add(spans)
         self._reply(202, {"accepted": len(spans)})
+
+    def _accept_otlp(self, body: bytes) -> None:
+        """Store the OTLP/HTTP JSON request in ``body`` and answer 200 with the empty success response of OTLP."""
+        content_type = (
+            self.headers.get("Content-Type", "").split(";")[0].strip().lower()
+        )
+        if content_type != "application/json":
+            self._reply(
+                415,
+                {
+                    "error": "OTLP requests must use Content-Type application/json; "
+                    "protobuf is not supported, so set the exporter protocol to http/json"
+                },
+            )
+            return
+        if self.headers.get("Content-Encoding", "identity").lower() != "identity":
+            self._reply(
+                415,
+                {
+                    "error": "compressed OTLP requests are not supported; turn off compression in the exporter"
+                },
+            )
+            return
+        try:
+            spans = parse_otlp_request(body)
+        except IngestionError as error:
+            self._reply(400, {"error": str(error)})
+            return
+        self.server.store.add(spans)
+        self._reply(200, {})
 
     def _discard_body(self) -> None:
         """Read and drop a small request body, so the client can read the reply without the connection resetting."""
@@ -74,6 +126,6 @@ class _IngestionHandler(BaseHTTPRequestHandler):
 
 
 def run_ingestion_server(host: str, port: int) -> None:
-    """Accept spans at ``http://host:port/v1/spans`` until the process stops."""
+    """Accept spans at ``http://host:port/v1/spans`` and traces at ``/v1/traces`` until the process stops."""
     with IngestionServer((host, port), TraceStore()) as server:
         server.serve_forever()
