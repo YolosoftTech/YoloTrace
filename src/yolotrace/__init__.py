@@ -1,6 +1,7 @@
 """YoloTrace: open-source, self-hosted observability and debugging for AI agents."""
 
 from yolotrace.sdk import (
+    ExportError,
     InstrumentationPolicy,
     PolicyError,
     Run,
@@ -13,6 +14,7 @@ from yolotrace.sdk import (
     configure,
     continue_trace,
     current_span,
+    export_spans,
     extract,
     finished_spans,
     inject,
@@ -29,6 +31,7 @@ from yolotrace.sdk import (
 )
 
 __all__ = [
+    "ExportError",
     "InstrumentationPolicy",
     "PolicyError",
     "Run",
@@ -41,6 +44,7 @@ __all__ = [
     "configure",
     "continue_trace",
     "current_span",
+    "export_spans",
     "extract",
     "finished_spans",
     "inject",

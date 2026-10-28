@@ -96,7 +96,7 @@ def run_batch(items: list[str]) -> None:
             pool.submit(propagate_context(process), item)
 ```
 - Exceptions are recorded on the span (`status == "error"`, `error == "Type: message"`) and re-raised unchanged.
-- Finished spans are kept in process memory. Storage and the ingestion API are not built yet.
+- Finished spans are kept in process memory until you send them to an ingestion server (see [Sending traces to the ingestion API](#sending-traces-to-the-ingestion-api)).
 
 To record agent framework runs, opt in once at startup. Each package is optional and must be installed:
 
@@ -121,7 +121,30 @@ python -m yolotrace run app.py --model gpt-4o
 
 The `run` command instruments every supported LLM library that is installed (`openai`, `anthropic`, `langchain-core` and `openai-agents`), runs `app.py` with its arguments, and then prints a summary to stderr, such as `YoloTrace: recorded 12 spans, 4 LLM calls, 1 failed`. The summary is printed even when the script raises. A library that is not installed is skipped. If one integration fails, YoloTrace prints a warning and the script still runs.
 
-Spans are kept in memory only, so the summary is the only output of `run` today. Exporting traces to files or to a server is not available yet. Use `python -m yolotrace run` only with a script, not with `-m module`.
+Spans are kept in memory, and the summary is the only output of `run`. To keep them, call `export_spans` (see below) from the script or send them from the code that runs it. Use `python -m yolotrace run` only with a script, not with `-m module`.
+
+### Sending traces to the ingestion API
+
+Run the ingestion server, then send finished spans to it from the SDK:
+
+```bash
+python -m yolotrace serve --host 127.0.0.1 --port 4318
+```
+
+```python
+from yolotrace import ExportError, export_spans
+
+try:
+    export_spans("http://127.0.0.1:4318/v1/spans")  # every finished span in this process
+except ExportError as error:
+    print(error)
+```
+
+- `export_spans` returns how many spans it sent. Pass a list of spans as the second argument to send only some of them.
+- The server stores accepted spans in memory, so they are lost when it stops. It has no authentication yet, so keep it on localhost or a network you trust.
+- A batch is accepted only when every span in it is valid, and the server answers with the reason when it is not.
+
+The JSON format and the endpoint are described in [docs/ingestion-api.md](docs/ingestion-api.md).
 
 ### Tracing across services and processes
 
@@ -190,7 +213,7 @@ apply_policy(load_policy(Path("yolotrace-policy.json").read_text(encoding="utf-8
 
 ### JavaScript/TypeScript SDK
 
-The JavaScript/TypeScript SDK lives in `sdk/javascript` and needs Node.js 20 or later. It has no runtime dependencies. It offers the same tracing API as the Python SDK, except events (`add_event`), which are Python-only for now. It uses functions instead of decorators:
+The JavaScript/TypeScript SDK lives in `sdk/javascript` and needs Node.js 20 or later. It has no runtime dependencies. It offers the same tracing API as the Python SDK, including events (`addEvent`). It uses functions instead of decorators:
 
 ```typescript
 import { configure, finishedSpans, inject, startSpan, trace } from "yolotrace";
@@ -212,10 +235,11 @@ trace("request", () => inject(headers));
 - `continueTrace(extract(headers), fn)` continues a trace from another process, the same as `continue_trace` and `extract` in Python.
 - `runs()` groups the finished spans into `Run` objects, with `roots` and `children(span)`, the same as `runs` in Python.
 - Streams and async generators are not traced yet. Automatic instrumentation of LLM clients is not available in this SDK.
+- `exportSpans(endpoint, spans?, { timeoutMs? })` sends finished spans to the ingestion API and returns how many were sent. It uses `fetch`, and it throws `ExportError` when a batch is not accepted. See [docs/ingestion-api.md](docs/ingestion-api.md).
 
 ### Go SDK
 
-The Go SDK lives in `sdk/go`, is a separate Go module with no dependencies, and needs Go 1.24 or later. It offers the same tracing API as the JavaScript SDK, except events, which are Python-only for now. Go has no decorators or implicit async context, so the current span travels in a `context.Context`:
+The Go SDK lives in `sdk/go`, is a separate Go module with no dependencies, and needs Go 1.24 or later. It offers the same tracing API as the JavaScript SDK, including events (`AddEvent`). Go has no decorators or implicit async context, so the current span travels in a `context.Context`:
 
 ```go
 ctx := context.Background()
@@ -243,6 +267,7 @@ yolotrace.Inject(ctx, headers)
 - `Configure` takes functional options, and omitted options return to their defaults. It returns an error for an invalid sample rate or a negative limit.
 - `ContinueTrace(ctx, Extract(headers))` continues a trace from another process. `Extract` returns `nil` when the value is missing or malformed.
 - `Runs()` groups the finished spans into `Run` values, with `Roots()` and `Children(span)`, the same as `runs` in Python.
+- `ExportSpans(ctx, endpoint, spans)` sends finished spans to the ingestion API and returns how many were sent. Pass `nil` for `spans` to send every finished span. A batch that is not accepted returns an error that wraps `ErrExport`. See [docs/ingestion-api.md](docs/ingestion-api.md).
 
 ## Architecture
 

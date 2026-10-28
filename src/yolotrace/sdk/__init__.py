@@ -1,5 +1,6 @@
 """Public Python SDK for recording AI agent activity."""
 
+from yolotrace.sdk.export import ExportError, export_spans
 from yolotrace.sdk.instrumentation import (
     instrument_anthropic,
     instrument_langchain,
@@ -34,6 +35,7 @@ from yolotrace.sdk.tracing import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "ExportError",
     "InstrumentationPolicy",
     "PolicyError",
     "Run",
@@ -46,6 +48,7 @@ __all__ = [
     "configure",
     "continue_trace",
     "current_span",
+    "export_spans",
     "extract",
     "finished_spans",
     "inject",

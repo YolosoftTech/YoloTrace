@@ -80,3 +80,42 @@ def test_run_prints_summary_even_when_script_raises(
 def test_run_requires_a_command() -> None:
     with pytest.raises(SystemExit):
         main([])
+
+
+def test_serve_runs_the_ingestion_api_on_the_given_address(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        "yolotrace.__main__.run_ingestion_server",
+        lambda host, port: calls.append((host, port)),
+    )
+
+    exit_code = main(["serve", "--host", "0.0.0.0", "--port", "9000"])
+
+    assert exit_code == 0
+    assert calls == [("0.0.0.0", 9000)]
+    assert "http://0.0.0.0:9000/v1/spans" in capsys.readouterr().err
+
+
+def test_serve_defaults_to_localhost_and_port_4318(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        "yolotrace.__main__.run_ingestion_server",
+        lambda host, port: calls.append((host, port)),
+    )
+
+    main(["serve"])
+
+    assert calls == [("127.0.0.1", 4318)]
+
+
+def test_serve_stops_cleanly_on_ctrl_c(monkeypatch: pytest.MonkeyPatch) -> None:
+    def interrupted(host: str, port: int) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("yolotrace.__main__.run_ingestion_server", interrupted)
+
+    assert main(["serve"]) == 0

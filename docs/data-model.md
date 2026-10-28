@@ -1,6 +1,6 @@
 # YoloTrace data model
 
-This document defines the trace, span, event, and attribute model that YoloTrace records. It describes the Python SDK (`yolotrace.sdk.tracing`), which is the reference implementation. Field names are the Python names; the JSON export and ingestion formats will use the same names.
+This document defines the trace, span, event, and attribute model that YoloTrace records. It describes the Python SDK (`yolotrace.sdk.tracing`), which is the reference implementation. Field names are the Python names; the JSON format used by export and ingestion uses the same names (see [docs/ingestion-api.md](ingestion-api.md)).
 
 ## Overview
 
@@ -87,7 +87,7 @@ An event records something that happened at one instant inside a span, such as a
 | `time` | `float` | Unix time in seconds, from `time.time()`, when `add_event` was called. |
 | `attributes` | `dict[str, AttributeValue]` | Details of the event. Same rules as span attributes. |
 
-- Events are created with `span.add_event(name, attributes)`.
+- Events are created with `span.add_event(name, attributes)` in Python, `span.addEvent(name, attributes)` in JavaScript/TypeScript, and `span.AddEvent(name, attributes)` in Go.
 - Events are immutable once created (`SpanEvent` is a frozen dataclass).
 - Events are ordered by the time they were added. An event added to an ended span is stored on that span.
 - An event's `time` falls between the span's `start_time` and `end_time` when it is added during the span.
@@ -123,7 +123,5 @@ Sampling decides, once per trace, whether its spans are kept. Unsampled spans st
 
 These parts of the model are planned but not implemented:
 
-- A serialized JSON form of the model and its schema version (needed for trace export and ingestion).
-- Events in the JavaScript/TypeScript and Go SDKs. Both currently record spans and attributes only.
 - Mapping to OpenTelemetry span and event fields.
 - Limits on the number of events per span.

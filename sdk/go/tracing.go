@@ -87,6 +87,16 @@ func NullValue() AttributeValue {
 	return AttributeValue{Kind: AttributeNull}
 }
 
+// SpanEvent is a point in time within a span, such as a retry or a cache miss.
+type SpanEvent struct {
+	// Name is what happened, such as "retry".
+	Name string
+	// Time is when the event was added.
+	Time time.Time
+	// Attributes holds the details of the event.
+	Attributes map[string]AttributeValue
+}
+
 // SpanOptions sets the kind and the attributes of a span when it starts.
 type SpanOptions struct {
 	// Kind is the kind of work the span describes. The zero value means KindStep.
@@ -198,6 +208,7 @@ type Span struct {
 	failed     bool
 	failure    string
 	attributes map[string]AttributeValue
+	events     []SpanEvent
 }
 
 // SetAttribute stores value under key, replacing any earlier value for that key.
@@ -219,6 +230,36 @@ func (s *Span) Attributes() map[string]AttributeValue {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return maps.Clone(s.attributes)
+}
+
+// AddEvent records an event named name at the current time, with optional attributes.
+//
+// The attributes obey the same limits as SetAttribute, so an event never fails because of
+// its size. Events keep the order in which they were added.
+func (s *Span) AddEvent(name string, attributes map[string]AttributeValue) {
+	current := currentSettings()
+	kept := make(map[string]AttributeValue, len(attributes))
+	for _, key := range slices.Sorted(maps.Keys(attributes)) {
+		if _, exists := kept[key]; !exists && len(kept) >= current.maxAttributes {
+			continue
+		}
+		kept[key] = limitAttribute(attributes[key], current.maxAttributeLength)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, SpanEvent{Name: name, Time: time.Now(), Attributes: kept})
+}
+
+// Events returns a copy of the events recorded for the span, in the order they were added.
+func (s *Span) Events() []SpanEvent {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	events := make([]SpanEvent, len(s.events))
+	for i, event := range s.events {
+		event.Attributes = maps.Clone(event.Attributes)
+		events[i] = event
+	}
+	return events
 }
 
 // End finishes a span started with StartSpan. Pass nil when the work succeeded, or the
