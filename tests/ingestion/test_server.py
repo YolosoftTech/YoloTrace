@@ -300,3 +300,35 @@ def test_otlp_request_without_content_length_is_refused(
 
     assert response.status == 411
     assert store.spans() == []
+
+
+def test_content_length_that_is_not_a_number_is_refused(
+    running_server: tuple[IngestionServer, TraceStore],
+) -> None:
+    server, store = running_server
+    connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+    try:
+        connection.putrequest("POST", INGEST_PATH, skip_accept_encoding=True)
+        connection.putheader("Content-Length", "ten")
+        connection.endheaders()
+        response = connection.getresponse()
+        body = response.read()
+    finally:
+        connection.close()
+
+    assert response.status == 400
+    assert b"Content-Length must be a whole number of bytes" in body
+    assert store.spans() == []
+
+
+def test_body_nested_too_deeply_gets_a_clear_error(
+    running_server: tuple[IngestionServer, TraceStore],
+) -> None:
+    server, store = running_server
+    body = b'{"schema_version": 1, "spans": ' + b"[" * 100_000 + b"]" * 100_000 + b"}"
+
+    response = _post(server, INGEST_PATH, body)
+
+    assert response.status == 400
+    assert b"nested too deeply" in response.body
+    assert store.spans() == []

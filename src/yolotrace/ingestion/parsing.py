@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import get_args
+from typing import NoReturn, get_args
 
 from yolotrace.sdk.export import SCHEMA_VERSION, JsonValue
 from yolotrace.sdk.tracing import AttributeValue, Span, SpanEvent, SpanKind
@@ -17,17 +17,33 @@ class IngestionError(ValueError):
     """Raised when a batch is not valid JSON in the documented format. The message names the invalid field."""
 
 
+def load_json(body: bytes) -> JsonValue:
+    """Parse ``body`` as JSON, refusing the input that JSON does not allow or that cannot be read.
+
+    ``NaN`` and ``Infinity`` are refused, and so is nesting too deep to parse. Both raise
+    ``IngestionError`` rather than letting the server fail the request.
+    """
+    try:
+        document: JsonValue = json.loads(body, parse_constant=_reject_constant)
+    except ValueError as error:
+        raise IngestionError(f"body is not valid JSON: {error}") from error
+    except RecursionError as error:
+        raise IngestionError("body is nested too deeply to read") from error
+    return document
+
+
+def _reject_constant(name: str) -> NoReturn:
+    """Refuse ``NaN``, ``Infinity`` and ``-Infinity``, which are not valid JSON numbers."""
+    raise ValueError(f"{name} is not a valid JSON number")
+
+
 def parse_batch(body: bytes) -> list[Span]:
     """Parse a JSON batch body into spans, in the order they were sent.
 
     Raises ``IngestionError`` naming the first invalid part of the batch, so the sender
     can fix it. Nothing is returned for a batch that is only partly valid.
     """
-    try:
-        document: JsonValue = json.loads(body)
-    except ValueError as error:
-        raise IngestionError(f"body is not valid JSON: {error}") from error
-    batch = _as_object(document, "body")
+    batch = _as_object(load_json(body), "body")
     version = _expect_int(batch, "schema_version", "body")
     if version != SCHEMA_VERSION:
         raise IngestionError(
@@ -42,13 +58,17 @@ def parse_batch(body: bytes) -> list[Span]:
 
 def span_from_dict(data: dict[str, JsonValue], where: str) -> Span:
     """Build a span from one object of the JSON format. ``where`` names the object in error messages."""
+    start_time = _expect_number(data, "start_time", where)
+    end_time = _optional_number(data, "end_time", where)
+    if end_time is not None and end_time < start_time:
+        raise IngestionError(f"{where}.end_time must not be before {where}.start_time")
     return Span(
         name=_expect_str(data, "name", where),
         trace_id=_expect_hex(data, "trace_id", where, length=32),
         span_id=_expect_hex(data, "span_id", where, length=16),
         parent_id=_optional_hex(data, "parent_id", where, length=16),
-        start_time=_expect_number(data, "start_time", where),
-        end_time=_optional_number(data, "end_time", where),
+        start_time=start_time,
+        end_time=end_time,
         status=_expect_choice(data, "status", where, _SPAN_STATUSES),
         error=_optional_str(data, "error", where),
         kind=_expect_span_kind(data, "kind", where),

@@ -13,6 +13,7 @@ from yolotrace.ingestion.parsing import (
     _expect_number,
     _expect_str,
     _field,
+    load_json,
 )
 from yolotrace.sdk.export import JsonValue
 from yolotrace.sdk.tracing import AttributeValue, Span, SpanEvent, SpanKind
@@ -28,11 +29,7 @@ def parse_otlp_request(body: bytes) -> list[Span]:
     Raises ``IngestionError`` naming the first invalid part of the request, so nothing is returned
     for a request that is only partly valid.
     """
-    try:
-        document: JsonValue = json.loads(body)
-    except ValueError as error:
-        raise IngestionError(f"body is not valid JSON: {error}") from error
-    request = _as_object(document, "body")
+    request = _as_object(load_json(body), "body")
     spans: list[Span] = []
     for resource_index, resource_item in enumerate(
         _optional_list(request, "resourceSpans", "body")

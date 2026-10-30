@@ -61,8 +61,13 @@ class _IngestionHandler(BaseHTTPRequestHandler):
     def _read_body(self) -> bytes | None:
         """Return the request body, or ``None`` after replying with an error when it cannot be read."""
         length = self.headers.get("Content-Length")
-        if length is None or not length.isdigit():
+        if length is None:
             self._reply(411, {"error": "a Content-Length header is required"})
+            return None
+        if not length.isdigit():
+            self._reply(
+                400, {"error": "Content-Length must be a whole number of bytes"}
+            )
             return None
         if int(length) > MAX_BODY_BYTES:
             self._reply(413, {"error": f"body is larger than {MAX_BODY_BYTES} bytes"})

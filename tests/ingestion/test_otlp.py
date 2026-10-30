@@ -296,3 +296,11 @@ def test_body_that_is_not_json_is_refused() -> None:
 def test_body_that_is_not_an_object_is_refused() -> None:
     with pytest.raises(IngestionError, match="body must be a JSON object"):
         parse_otlp_request(b"[]")
+
+
+def test_non_finite_attribute_number_is_refused() -> None:
+    span = _span_json(attributes=[_attribute("score", {"doubleValue": 0})])
+    request = _request(span).replace(b'"doubleValue": 0', b'"doubleValue": NaN')
+
+    with pytest.raises(IngestionError, match="is not a valid JSON number"):
+        parse_otlp_request(request)
