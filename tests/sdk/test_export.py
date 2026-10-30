@@ -33,12 +33,12 @@ def ingestion() -> Iterator[tuple[str, TraceStore]]:
         thread.join()
 
 
-def _span(name: str) -> Span:
-    """Return a finished span named ``name``."""
+def _span(name: str, span_id: str = "b7ad6b7169203331") -> Span:
+    """Return a finished span named ``name`` with ``span_id``."""
     return Span(
         name=name,
         trace_id="0af7651916cd43dd8448eb211c80319c",
-        span_id="b7ad6b7169203331",
+        span_id=span_id,
         parent_id=None,
         start_time=1.0,
         end_time=2.0,
@@ -134,7 +134,10 @@ def test_large_export_is_split_into_batches(
     ingestion: tuple[str, TraceStore], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     url, store = ingestion
-    spans = [_span(f"span-{index}") for index in range(BATCH_SIZE + 3)]
+    spans = [
+        _span(f"span-{index}", span_id=f"{index:016x}")
+        for index in range(BATCH_SIZE + 3)
+    ]
     batch_sizes: list[int] = []
     real_post = export_module._post
 

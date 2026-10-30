@@ -26,7 +26,7 @@ sent = export_spans("http://127.0.0.1:4318/v1/spans")  # every finished span in 
 - `spans` defaults to `finished_spans()`. Pass a list to send only some spans.
 - The JavaScript/TypeScript SDK has `exportSpans(endpoint, spans?, { timeoutMs? })`, and the Go SDK has `ExportSpans(ctx, endpoint, spans)`. They send the same format and follow the same rules.
 - It returns the number of spans sent.
-- Spans are sent in batches of 500. A batch the server does not accept raises `ExportError`. Batches sent before it stay stored, so exporting the same spans again stores them again. Deduplication is not built yet.
+- Spans are sent in batches of 500. A batch the server does not accept raises `ExportError`. Batches sent before it stay stored. Sending a span again does not store a second copy; see [Stored spans](#stored-spans).
 
 ## Endpoint
 
@@ -105,6 +105,17 @@ Request headers: `Content-Length` is required. The body must be at most 16 MiB. 
 
 A batch is stored only when every span in it is valid, so a rejected batch never leaves part of itself behind.
 
+### Stored spans
+
+The server keeps one record per `trace_id` and `span_id`. Spans can arrive in any order and in more than one batch:
+
+- A child span may arrive before its parent. Both are stored, and the parent is linked once it arrives.
+- A run may be stored while some of its spans are still running (`end_time` and `duration` are `null`). Each running span is stored as received.
+- A running span is replaced by the next copy of it that arrives, so a later snapshot or the finished span takes its place. It keeps its first position in the order spans are listed.
+- A finished span is never replaced. A late copy that still says the span is running does not undo it, and sending the same finished span again does not store it twice. The first finished copy is kept.
+
+Nothing is rejected for arriving out of order. The server does not compute run state, so a run is only complete once all of its spans have been sent in their finished form.
+
 ## OpenTelemetry traces
 
 Applications that already export OpenTelemetry traces can send them to the same server. It accepts OTLP/HTTP requests in JSON form at `POST /v1/traces`. For the Python OpenTelemetry exporter, set `OTEL_EXPORTER_OTLP_PROTOCOL=http/json` and `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4318/v1/traces`.
@@ -139,7 +150,6 @@ Protobuf and compressed requests are not supported yet. A request with a missing
 ## Not yet supported
 
 - Authentication, signed credentials, and network restrictions.
-- Persistent storage, retention, and deduplication of retried spans.
+- Persistent storage, retention, and deduplication of retried events.
 - Validation limits on event counts and attribute counts; the SDK's own limits (`configure`) apply at the source.
-- Out-of-order and partially completed runs are stored as received, without any reconciliation.
 - Health checks, batch compression, and OpenTelemetry protobuf or compressed requests (see below).

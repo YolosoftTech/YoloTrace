@@ -143,6 +143,7 @@ except ExportError as error:
 - `export_spans` returns how many spans it sent. Pass a list of spans as the second argument to send only some of them.
 - The server stores accepted spans in memory, so they are lost when it stops. It has no authentication yet, so keep it on localhost or a network you trust.
 - A batch is accepted only when every span in it is valid, and the server answers with the reason when it is not. A span cannot end before it starts, and numbers must be finite (`NaN` and `Infinity` are refused).
+- Spans can arrive out of order and in several batches. The server keeps one record per span: a running span is replaced by its later copy, and a finished span is never replaced, so a retried or late span does not create a duplicate or undo its end.
 
 OpenTelemetry applications can send traces to the same server at `http://127.0.0.1:4318/v1/traces` in OTLP/HTTP JSON form, with `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`. Protobuf is not supported yet.
 
