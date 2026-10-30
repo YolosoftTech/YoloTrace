@@ -206,3 +206,34 @@ def test_invalid_attribute_names_its_key() -> None:
         IngestionError, match=r"body.spans\[0\].attributes.tags must be a string"
     ):
         parse_batch(_batch(_span_json(attributes={"tags": ["a"]})))
+
+
+@pytest.mark.parametrize("constant", [b"NaN", b"Infinity", b"-Infinity"])
+def test_non_finite_number_is_rejected(constant: bytes) -> None:
+    body = _batch(_span_json()).replace(
+        b'"start_time": 1000.5', b'"start_time": ' + constant
+    )
+
+    with pytest.raises(IngestionError, match="is not a valid JSON number"):
+        parse_batch(body)
+
+
+def test_span_that_ends_before_it_starts_is_rejected() -> None:
+    with pytest.raises(
+        IngestionError,
+        match=r"body.spans\[0\].end_time must not be before body.spans\[0\].start_time",
+    ):
+        parse_batch(_batch(_span_json(start_time=5.0, end_time=4.0)))
+
+
+def test_span_that_ends_when_it_starts_is_accepted() -> None:
+    (span,) = parse_batch(_batch(_span_json(start_time=5.0, end_time=5.0)))
+
+    assert span.end_time == span.start_time
+
+
+def test_body_nested_too_deeply_is_rejected_not_crashed() -> None:
+    body = b'{"schema_version": 1, "spans": ' + b"[" * 100_000 + b"]" * 100_000 + b"}"
+
+    with pytest.raises(IngestionError, match="nested too deeply"):
+        parse_batch(body)

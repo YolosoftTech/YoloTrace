@@ -50,8 +50,8 @@ Request headers: `Content-Length` is required. The body must be at most 16 MiB. 
 | `span_id` | string | Required. 16 lowercase hexadecimal characters. |
 | `parent_id` | string or null | Required. 16 lowercase hexadecimal characters, or `null` for a root span. |
 | `kind` | string | Required. One of `run`, `step`, `llm`, `tool`. |
-| `start_time` | number | Required. Unix time in seconds. |
-| `end_time` | number or null | Required. Unix time in seconds, or `null` while the span is running. |
+| `start_time` | number | Required. Unix time in seconds. A finite number, so `NaN` and `Infinity` are refused. |
+| `end_time` | number or null | Required. Unix time in seconds, or `null` while the span is running. Not before `start_time`. |
 | `duration` | number or null | Required. Seconds, or `null` while the span is running. |
 | `status` | string | Required. `ok` or `error`. |
 | `error` | string or null | Required. `"Type: message"` for a failed span, otherwise `null`. |
@@ -97,7 +97,8 @@ Request headers: `Content-Length` is required. The body must be at most 16 MiB. 
 | Status | When | Body |
 | --- | --- | --- |
 | `202 Accepted` | Every span is valid and stored. | `{"accepted": <count>}` |
-| `400 Bad Request` | The body is not JSON, or a field is missing or has the wrong type. Nothing from the batch is stored. | `{"error": "<the first invalid field, such as body.spans[1].kind must be one of run, step, llm, tool>"}` |
+| `400 Bad Request` | The body is not JSON, is nested too deeply, or a field is missing or has the wrong type. Nothing from the batch is stored. | `{"error": "<the first invalid field, such as body.spans[1].kind must be one of run, step, llm, tool>"}` |
+| `400 Bad Request` | `Content-Length` is not a whole number. | `{"error": "Content-Length must be a whole number of bytes"}` |
 | `404 Not Found` | The path is not `/v1/spans`. | `{"error": "..."}` |
 | `411 Length Required` | No `Content-Length` header. | `{"error": "..."}` |
 | `413 Content Too Large` | The body is larger than 16 MiB. | `{"error": "..."}` |
@@ -128,7 +129,7 @@ Responses:
 | Status | When | Body |
 | --- | --- | --- |
 | `200 OK` | Every span is valid and stored. | `{}`, the empty success response of OTLP |
-| `400 Bad Request` | The body is not valid OTLP JSON. Nothing from the request is stored. | `{"error": "<the first invalid field>"}` |
+| `400 Bad Request` | The body is not valid OTLP JSON, holds `NaN` or `Infinity`, or is nested too deeply. Nothing from the request is stored. | `{"error": "<the first invalid field>"}` |
 | `411 Length Required` | No `Content-Length` header. | `{"error": "..."}` |
 | `413 Content Too Large` | The body is larger than 16 MiB. | `{"error": "..."}` |
 | `415 Unsupported Media Type` | The `Content-Type` is not `application/json`, or the body is compressed. | `{"error": "..."}` |
