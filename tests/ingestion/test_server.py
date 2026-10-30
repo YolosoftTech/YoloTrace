@@ -46,12 +46,14 @@ def running_server() -> Iterator[tuple[IngestionServer, TraceStore]]:
         thread.join()
 
 
-def _span(name: str = "answer") -> dict[str, JsonValue]:
+def _span(
+    name: str = "answer", span_id: str = "b7ad6b7169203331"
+) -> dict[str, JsonValue]:
     """Return one span in the JSON format."""
     return {
         "name": name,
         "trace_id": "0af7651916cd43dd8448eb211c80319c",
-        "span_id": "b7ad6b7169203331",
+        "span_id": span_id,
         "parent_id": None,
         "kind": "step",
         "start_time": 1.0,
@@ -91,7 +93,11 @@ def test_valid_batch_is_stored_and_acknowledged(
 ) -> None:
     server, store = running_server
 
-    response = _post(server, INGEST_PATH, _batch(_span("first"), _span("second")))
+    response = _post(
+        server,
+        INGEST_PATH,
+        _batch(_span("first", "1111111111111111"), _span("second", "2222222222222222")),
+    )
 
     assert response.status == 202
     assert response.json == {"accepted": 2}
@@ -103,10 +109,36 @@ def test_batches_accumulate_in_the_store(
 ) -> None:
     server, store = running_server
 
-    _post(server, INGEST_PATH, _batch(_span("first")))
-    _post(server, INGEST_PATH, _batch(_span("second")))
+    _post(server, INGEST_PATH, _batch(_span("first", "1111111111111111")))
+    _post(server, INGEST_PATH, _batch(_span("second", "2222222222222222")))
 
     assert [span.name for span in store.spans()] == ["first", "second"]
+
+
+def test_running_span_is_completed_by_a_later_batch(
+    running_server: tuple[IngestionServer, TraceStore],
+) -> None:
+    server, store = running_server
+    running = _span("answer") | {"end_time": None, "duration": None}
+
+    _post(server, INGEST_PATH, _batch(running))
+    _post(server, INGEST_PATH, _batch(_span("answer")))
+
+    [span] = store.spans()
+    assert span.end_time == 2.0
+
+
+def test_finished_span_is_not_undone_by_a_late_running_copy(
+    running_server: tuple[IngestionServer, TraceStore],
+) -> None:
+    server, store = running_server
+    running = _span("answer") | {"end_time": None, "duration": None}
+
+    _post(server, INGEST_PATH, _batch(_span("answer")))
+    _post(server, INGEST_PATH, _batch(running))
+
+    [span] = store.spans()
+    assert span.end_time == 2.0
 
 
 def test_invalid_batch_is_refused_with_the_reason_and_stores_nothing(
